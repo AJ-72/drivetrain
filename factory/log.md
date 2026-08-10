@@ -218,3 +218,20 @@ copy loads, shows the title `Drivetrain`, runs a full race to `WIN` at 59.500 s,
 applies the CSS, and throws no error.
 
 - Next: T10 `[STRUCTURAL]`, publish and hand the link to the user.
+
+## Cycle 6 — the design pass and T10
+
+- Changed: a new visual identity, grounded in railway signalling. Steel
+  neutrals with a green bias. Three signal colours that state a rule: green go
+  on the throttle, red stop on the brake, amber caution at the platform. A lamp
+  on each lever. A trackside signal at the platform. A hatched platform edge.
+  Two type roles.
+- Proof: screenshots in the light theme and in the dark theme, at 390x844.
+  Page errors: 0 in both themes.
+- Contract: 13/13. Exit code 0.
+- T10: published `dist/artifact.html`.
+  Link: https://claude.ai/code/artifact/17059745-690c-4ab0-af19-5f568e4e56b6
+- T10 done-condition is open. The user must open the link on the phone and tap
+  a control.
+
+- Next: Step 6, the Inspector. The artifact is `factory/REVIEW.md`.
