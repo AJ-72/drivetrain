@@ -3,9 +3,9 @@
 Project: drivetrain
 Date: 2026-08-10
 Branch: `claude/train-racing-game-1omoqu`
-Revision: 4. The user found that every race followed one pattern. The station
-now moves, the rail condition varies, the rival reacts, and a distant signal
-warns the driver in time to plan.
+Revision: 5. The user found the acceleration was linear. The pull now falls
+away with speed and resistance pushes back, which gives the machine a character.
+This revision absorbs revision 4.
 
 ## 1. Who uses it
 
@@ -31,19 +31,23 @@ A weaker model must not invent any of these values. Every value is fixed.
 TRACK_LENGTH_M       = 2000     // metres, from start to the end of the rail
 
 // the station moves for every race
-PLATFORM_WIDTH_M      = 360
+PLATFORM_WIDTH_M      = 240
 PLATFORM_MIN_START_M  = 1300
 PLATFORM_MAX_START_M  = 1520
 
-THROTTLE_ACCEL       = 2.5      // metres per second squared, the player
+// the pull, and what pushes back
+PLAYER_FMAX          = 2.5      // metres per second squared, off the line
+PLAYER_POWER         = 95       // the pull equals POWER / speed past the corner
 BRAKE_DECEL          = 2.5      // scaled by the rail grip
-COAST_DECEL          = 0.15     // metres per second squared, no input
-                                // the player has NO top speed
+RES_R0               = 0.06     // rolling resistance
+RES_R2               = 0.00028  // air resistance, per speed squared
+                                // no cap is written; the ceiling is the machine
 
 // the rail draws one of these for every race, and it scales every brake
 GRIPS = DRY 1.00, DAMP 0.80, WET 0.65
 
-RIVAL_ACCEL          = 4.0      // the rival pulls away first
+RIVAL_FMAX           = 4.0      // the rival pulls away first
+RIVAL_POWER          = 120
 RIVAL_BRAKE          = 4.0      // also scaled by the rail grip
 RIVAL_MIN_SPEED      = 28       // the draw, in metres per second
 RIVAL_MAX_SPEED      = 33
@@ -65,14 +69,20 @@ judge.
 
 These numbers give this behaviour:
 
-- The player has no top speed. On a dry rail the brake distance equals the
-  distance already run, so the nose stops at twice the brake point. A damp rail
-  gives 2.25 times. A wet rail gives 2.54 times.
+- The pull holds at 2.5 until 38 m/s, then falls as 95 divided by the speed.
+  Resistance rises with the square of the speed. The two balance near 67 m/s,
+  which is about 241 km/h. No cap is written anywhere.
+- Measured gain under full power: 12.1 m/s in the first five seconds, 4.7 m/s in
+  the sixth. Coasting from 40 m/s loses 2.4 m/s in five seconds.
+- The braking distance is no longer the speed squared over twice the brake,
+  because resistance helps the brake. The exact form is
+  `ln(1 + R2 v^2 / (B + R0)) / (2 R2)`, and the stop marker uses it.
 - The station moves, so no single brake point is ever correct twice.
 - Full power with no brake reaches 2000 m. That is always an overshoot.
 - Measured win bands against the hardest rival, at every station position:
-  170 m on a dry rail, 150 m on a damp rail, 130 m on a wet rail. The floor is
-  120 m.
+  180 m to 190 m on a dry rail, 170 m to 180 m damp, 160 m to 170 m wet. The
+  floor is 120 m.
+- The rail shifts where the brake must start by about 150 m, which is the read.
 - The rival leads early, because it accelerates at 4.0 against the player's 2.5.
 - The rival pushes harder when the player pulls a lead, and never passes 36 m/s.
 - A distant signal stands 400 m before the platform and calls out the distance.

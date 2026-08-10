@@ -2,10 +2,20 @@
 
 Project: drivetrain
 Date: 2026-08-10
-Revision: 4. The user found that every race followed one pattern, because the
-player made exactly one decision and the station never moved. Revision 4 makes
-that decision impossible to precompute.
-Status: DRAFT. The user must sign revision 4.
+Revision: 5. The user found the acceleration was linear: the pull never fell
+away and nothing pushed back. Revision 5 replaces it with the real shape, and it
+absorbs revision 4, which was never signed.
+Status: DRAFT. The user must sign revision 5.
+
+### What changed from revision 4, and why
+
+| Change | Reason |
+|---|---|
+| Tractive effort falls as power over speed | A constant pull is not a machine. Nothing ever pushed back, so the run was featureless. |
+| Resistance rises with the square of the speed | It gives the natural ceiling near 240 km/h, and coasting at speed now costs real speed. |
+| The platform narrows to 240 m | Under the new curve the win band grew to 290 m, which made the stop too easy. 240 m brings the band back to 160 m to 190 m. |
+| The stop marker uses an exact integral | Braking distance is no longer speed squared over twice the brake, because resistance helps the brake. C19 holds the marker to 5 m. |
+| C21 is new | It proves the pull tapers and that coasting loses real speed. A constant pull was the defect. |
 
 ### What changed from revision 3, and why
 
@@ -72,16 +82,16 @@ Rules for the harness:
 
 Every deterministic check pins the three draws:
 `test.start({rivalMax: 28, platformStart: 1400, grip: "DRY"})`. The pinned
-platform runs from 1400 m to 1760 m.
+platform runs from 1400 m to 1640 m.
 
 Steps: start the pinned race, then `setInput({throttle:true})`, then step until
-`playerPos >= 780`, then `setInput({brake:true})`, then step until
+`playerPos >= 990`, then `setInput({brake:true})`, then step until
 `state === 'RESULT'`.
 
 Assertions:
 
 - `result === 'WIN'`.
-- `1400 <= playerPos <= 1760`.
+- `1400 <= playerPos <= 1640`.
 - `playerSpeed === 0`.
 - `elapsedMs < 70000`.
 - The visible text contains `WIN`.
@@ -99,7 +109,7 @@ Steps: start the pinned race, then `setInput({throttle:true})`, then step until
 Assertions:
 
 - `result === 'OVERSHOT'`.
-- `playerPos > 1760`.
+- `playerPos > 1640`.
 - The visible text contains `OVERSHOT` and no other result string.
 
 ### C3 — A stop short
@@ -203,7 +213,7 @@ Assertions:
 
 - `result === 'RIVAL WINS'`.
 - `rivalDone === true`.
-- The rival finish time falls between 45000 ms and 60000 ms.
+- The rival finish time falls between 45000 ms and 65000 ms.
 - The visible text contains `RIVAL WINS` and no other result string.
 
 ### C10 — Hostile input does not break the page
@@ -247,7 +257,7 @@ Assertions:
 - The set of `x` values that give `WIN` forms one contiguous band.
 - The band measures at least 120 m.
 - The band measures at most 600 m.
-- The harness prints the measured band, for example `WIN band: 560..690`.
+- The harness prints the measured band, for example `WIN band: 750..920`.
 
 This check stops an unwinnable game and it stops a trivial game.
 
@@ -290,7 +300,7 @@ Assertions:
 
 - At least 10 distinct platform positions appear in 30 races.
 - No platform starts before 1300 m or after 1520 m.
-- The platform always measures 360 m.
+- The platform always measures 240 m.
 - The distant signal always stands 400 m before the platform.
 - The spread between the nearest and the furthest station is at least 150 m.
 
@@ -328,6 +338,21 @@ Assertions:
 - The banner names the distant signal.
 - The banner states the remaining distance.
 
+### C21 — The pull tapers and resistance bites
+
+A constant acceleration is not a machine. This check holds the model to a real
+curve.
+
+Steps: hold full power and sample the speed every five seconds. Then reach
+40 m/s, release everything, and coast for five seconds.
+
+Assertions:
+
+- The train still gains speed at both the first and the sixth sample.
+- The gain in the sixth five second window is below 60 percent of the gain in
+  the first.
+- Coasting from 40 m/s loses more than 2 m/s in five seconds.
+
 ### C14 — The published file works
 
 Every other check reads `index.html`. The file that ships is
@@ -340,7 +365,7 @@ Assertions:
 
 - The built file carries no `<!doctype`, `<html`, `<head`, or `<body` tag.
 - The built file still contains `__drivetrain`.
-- The built page reaches `result === 'WIN'` with `1400 <= playerPos <= 1760`.
+- The built page reaches `result === 'WIN'` with `1400 <= playerPos <= 1640`.
 - `#result` reads `WIN`.
 - THROTTLE and BRAKE each measure at least 64 by 64 pixels.
 - `document.documentElement.scrollWidth <= 390`.
@@ -383,6 +408,7 @@ Assertions:
 
 Revision 2 was signed on 2026-08-10 and covered C1 to C13.
 
-Revision 3 was built and measured but never signed. Revision 4 supersedes it.
+Revisions 3 and 4 were built and measured but never signed. Revision 5
+supersedes both.
 
-- [ ] The user accepts checks C1 to C20 as revision 4.
+- [ ] The user accepts checks C1 to C21 as revision 5.

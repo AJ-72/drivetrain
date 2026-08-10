@@ -1,9 +1,9 @@
-// contract.mjs — runs every check in factory/CONTRACT.md revision 4.
+// contract.mjs — runs every check in factory/CONTRACT.md revision 5.
 // The contract is frozen. Do not weaken a check here. If a check disagrees
 // with the contract, stop and ask a human.
 //
 // Run:  node test/contract.mjs
-// Exit: 0 only when all 20 checks pass.
+// Exit: 0 only when all 21 checks pass.
 
 import { createRequire } from "module";
 import { fileURLToPath } from "url";
@@ -21,11 +21,11 @@ const RESULTS = ["WIN", "UNDERSHOT", "OVERSHOT", "RIVAL WINS"];
 // The station, the rail, and the rival all vary per race, so every
 // deterministic check pins all three.
 const PLAT_START = 1400;
-const PLAT_END = 1760;
+const PLAT_END = 1640;
 const PIN = { rivalMax: 28, platformStart: PLAT_START, grip: "DRY" };
 const PIN_HARD = { rivalMax: 33, platformStart: PLAT_START, grip: "WET" };
-const WIN_BRAKE_M = 780;      // inside the dry band of 700..870
-const SLOW_WIN_BRAKE_M = 860; // still a win, but later
+const WIN_BRAKE_M = 990;      // inside the dry band of 900..1090
+const SLOW_WIN_BRAKE_M = 1080; // still a win, but later
 const SHORT_BRAKE_M = 300;    // an undershoot, but past the arming distance
 const report = [];
 
@@ -405,7 +405,7 @@ async function C9(ctx) {
   });
   c.eq(r.result, "RIVAL WINS", "result");
   c.eq(r.rivalDone, true, "rivalDone");
-  c.between(r.ms, 45000, 60000, "rival finish ms at its top speed");
+  c.between(r.ms, 45000, 65000, "rival finish ms at its top speed");
   await assertResultStrings(c, page, "RIVAL WINS");
   await page.close();
   c.done(`rival stops at ${(r.ms / 1000).toFixed(3)} s`);
@@ -491,7 +491,7 @@ async function C10() {
 async function C11(ctx) {
   const c = new Check("C11");
   const wins = [];
-  for (let x = 200; x <= 1400; x += 10) {
+  for (let x = 200; x <= 1500; x += 10) {
     const page = await ctx.newPage();
     await page.goto(URL);
     await page.waitForFunction(() => !!window.__drivetrain);
@@ -829,7 +829,7 @@ async function C17(ctx) {
   c.ok(new Set(starts).size >= 10, `the station must move: ${new Set(starts).size} distinct positions in 30 races`);
   c.ok(Math.min(...starts) >= 1300, `station too near: ${Math.min(...starts)}`);
   c.ok(Math.max(...starts) <= 1520, `station too far: ${Math.max(...starts)}`);
-  c.ok(seen.every((v) => v.pe - v.ps === 360), "the platform must always measure 360 m");
+  c.ok(seen.every((v) => v.pe - v.ps === 240), "the platform must always measure 240 m");
   c.ok(seen.every((v) => v.ps - v.warn === 400), "the distant signal must stand 400 m before the platform");
   c.ok(Math.max(...starts) - Math.min(...starts) >= 150,
     `the station spread must be real: ${Math.min(...starts)}..${Math.max(...starts)}`);
@@ -917,6 +917,47 @@ async function C20(ctx) {
   c.done(`fired at ${r.firedAt.toFixed(0)} m: "${r.callout}"`);
 }
 
+// C21 — the pull must fall away with speed, and resistance must bite.
+async function C21(ctx) {
+  const c = new Check("C21");
+  const { page } = await openPage(ctx);
+  const r = await page.evaluate(() => {
+    const d = window.__drivetrain;
+    d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
+    d.test.setInput({ throttle: true, brake: false });
+    const sample = [];
+    let last = 0;
+    for (let i = 0; i < 40; i += 1) {
+      d.test.step(300);                       // five seconds per sample
+      sample.push({ t: (i + 1) * 5, v: d.playerSpeed, gain: d.playerSpeed - last });
+      last = d.playerSpeed;
+      if (d.state !== "RACING") break;
+    }
+    // coasting from speed must lose real speed to resistance
+    d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
+    d.test.setInput({ throttle: true, brake: false });
+    let g = 0;
+    while (d.playerSpeed < 40 && d.state === "RACING" && g < 60000) { d.test.step(1); g += 1; }
+    const coastFrom = d.playerSpeed;
+    d.test.setInput({ throttle: false, brake: false });
+    d.test.step(300);
+    return { sample, coastFrom, coastTo: d.playerSpeed };
+  });
+
+  const early = r.sample[0].gain;
+  const later = r.sample[5].gain;
+  c.ok(early > 0 && later > 0, "the train must still be gaining speed at both samples");
+  c.ok(later < early * 0.6,
+    `the pull must taper: gained ${early.toFixed(2)} m/s in the first 5 s, ${later.toFixed(2)} m/s in the sixth`);
+
+  const drop = r.coastFrom - r.coastTo;
+  c.ok(drop > 2,
+    `coasting from ${r.coastFrom.toFixed(1)} m/s must lose real speed in 5 s: lost ${drop.toFixed(2)}`);
+
+  await page.close();
+  c.done(`gain per 5 s falls ${early.toFixed(2)} -> ${later.toFixed(2)} m/s; coasting loses ${drop.toFixed(2)} m/s`);
+}
+
 // --------------------------------------------------------------------- main
 
 async function main() {
@@ -927,10 +968,10 @@ async function main() {
     () => C5(), () => C6(), () => C7(shared), () => C8(shared),
     () => C9(shared), () => C10(), () => C11(shared), () => C12(), () => C13(),
     () => C14(), () => C15(shared), () => C16(shared), () => C17(shared),
-    () => C18(shared), () => C19(shared), () => C20(shared)
+    () => C18(shared), () => C19(shared), () => C20(shared), () => C21(shared)
   ];
   const ids = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10",
-               "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19", "C20"];
+               "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19", "C20", "C21"];
   for (let i = 0; i < stages.length; i += 1) {
     try {
       await stages[i]();

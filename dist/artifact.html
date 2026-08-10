@@ -191,16 +191,21 @@ const K = {
 
   // The station moves for every race. A memorised brake point does not work.
   // The player must judge from the speed, the distance left, and the rail.
-  PLATFORM_WIDTH_M:      360,
+  PLATFORM_WIDTH_M:      240,
   PLATFORM_MIN_START_M: 1300,
   PLATFORM_MAX_START_M: 1520,
 
-  // The player has no top speed. Speed is bought with distance, and the brake
-  // distance grows with the square of the speed, so a bold run is also a
-  // harder stop.
-  THROTTLE_ACCEL:     2.5,
-  BRAKE_DECEL:        2.5,
-  COAST_DECEL:        0.15,
+  // A real machine does not pull the same at 20 km/h and at 200. Tractive
+  // effort holds flat while adhesion limits it, then falls as power over speed.
+  // Resistance rises with the square of the speed. Together they give the shape
+  // a driver feels: a shove off the line, a long taper, and a speed where the
+  // pull and the drag balance. No cap is written anywhere; the ceiling is the
+  // machine running out of breath.
+  PLAYER_FMAX:        2.5,   // metres per second squared, off the line
+  PLAYER_POWER:        95,   // the pull equals POWER / speed once past the corner
+  BRAKE_DECEL:        2.5,   // scaled by the rail grip
+  RES_R0:            0.06,   // rolling resistance
+  RES_R2:        0.00028,    // air resistance, per speed squared
 
   // The rail condition is drawn for each race and it scales every brake, for
   // both trains. A wet rail carries the train much further.
@@ -213,7 +218,8 @@ const K = {
   // The rival accelerates harder than the player, holds a top speed drawn for
   // each race, and pushes harder when the player leads. Its speed never passes
   // RIVAL_HARD_CAP. It brakes when its own braking distance demands it.
-  RIVAL_ACCEL:         4.0,
+  RIVAL_FMAX:          4.0,
+  RIVAL_POWER:         120,
   RIVAL_BRAKE:         4.0,
   RIVAL_MIN_SPEED:     28,
   RIVAL_MAX_SPEED:     33,
@@ -243,11 +249,24 @@ const S = {
   input: { throttle: false, brake: false }
 };
 
-function stepTrain(train, throttle, brake, accel, decel, cap) {
+function resistance(v) { return K.RES_R0 + K.RES_R2 * v * v; }
+
+// The exact distance to a standstill under a constant brake plus a resistance
+// that grows with the square of the speed. The stop marker reads this, so it
+// must be the true integral, not an approximation.
+function stopDistance(v, decel) {
+  const b = decel + K.RES_R0;
+  if (v <= 0) return 0;
+  return Math.log(1 + (K.RES_R2 * v * v) / b) / (2 * K.RES_R2);
+}
+
+function stepTrain(train, throttle, brake, spec, cap) {
+  const v = train.speed;
+  const res = resistance(v);
   let a;
-  if (brake)         a = -decel;
-  else if (throttle) a =  accel;
-  else               a = -K.COAST_DECEL;
+  if (brake)         a = -(spec.brake * S.grip) - res;
+  else if (throttle) a =  Math.min(spec.fmax, spec.power / Math.max(v, 1)) - res;
+  else               a = -res;
 
   // The train moves first, then the speed changes. This order matches the
   // arithmetic in BRIEF.md section 3. The reverse order shortens every brake
@@ -261,7 +280,7 @@ function stepTrain(train, throttle, brake, accel, decel, cap) {
 
 // How far this train needs to stop from its current speed, on this rail.
 function brakeDistance(speed, decel) {
-  return (speed * speed) / (2 * decel * S.grip);
+  return stopDistance(speed, decel * S.grip);
 }
 
 function finish(result) {
@@ -297,7 +316,8 @@ function step() {
 
   const p = { pos: S.playerPos, speed: S.playerSpeed };
   stepTrain(p, S.input.throttle && !S.input.brake, S.input.brake,
-            K.THROTTLE_ACCEL, K.BRAKE_DECEL * S.grip, Infinity);
+            { fmax: K.PLAYER_FMAX, power: K.PLAYER_POWER, brake: K.BRAKE_DECEL },
+            Infinity);
   S.playerPos = p.pos; S.playerSpeed = p.speed;
   if (S.playerPos > K.ARM_AFTER_M) S.playerArmed = true;
   if (S.playerPos >= S.warnAtM) S.passedWarn = true;
@@ -313,7 +333,9 @@ function step() {
     S.rivalMax = Math.min(S.rivalBase + push, K.RIVAL_HARD_CAP) * railFactor;
     // It brakes at the last moment its own stopping distance allows.
     const braking = (S.rivalTargetM - r.pos) <= brakeDistance(r.speed, K.RIVAL_BRAKE);
-    stepTrain(r, !braking, braking, K.RIVAL_ACCEL, K.RIVAL_BRAKE * S.grip, S.rivalMax);
+    stepTrain(r, !braking, braking,
+              { fmax: K.RIVAL_FMAX, power: K.RIVAL_POWER, brake: K.RIVAL_BRAKE },
+              S.rivalMax);
     S.rivalPos = r.pos; S.rivalSpeed = r.speed;
     if (S.rivalSpeed > 0) S.rivalArmed = true;
     if (S.rivalArmed && S.rivalSpeed === 0) S.rivalDone = true;
