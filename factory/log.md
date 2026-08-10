@@ -375,3 +375,51 @@ rises from 28.0 to 31.0 m/s and never passes 36.
 
 - Contract: revision 4, checks C1 to C20. All 20 pass.
 - State: revision 4 is DRAFT. It waits for a signature.
+
+## Cycle 10 — revision 5, and a loss the player could not explain
+
+The user sent a screenshot: `RIVAL WINS` on a wet rail at 68.65 s, with the
+train inside the platform, still rolling at 42 km/h, and the rival sitting
+behind it on the track.
+
+I reproduced the case rather than reading the picture:
+
+```
+result      : RIVAL WINS at 71.28s
+platform    : 1505 .. 1745
+your nose   : 1552 m  (inside platform: true)
+your speed  : 47 km/h   stop needs 49 m
+rival nose  : 1625 m
+```
+
+The rule worked correctly. The player must come to a stand inside the platform
+before the rival completes its own stop. Being inside is not the win. Position
+never decides the race.
+
+### SURPRISING — the game gave no way to know the deadline existed
+
+The HUD held six numbers about the player's own train and nothing about time.
+The rival completing its stop had no marker, no banner, and no sound. A player
+could be ahead on the track, inside the platform, and lose without any warning.
+
+That is a defect in the screen, not in the rule.
+
+- Added: a cause line under every result. A loss now says why.
+- Added: a banner when the rival begins its final brake.
+- Added: C22 and C23 to hold both in place.
+
+### Also this cycle — the linear pull
+
+The user reported that the acceleration was linear. It was: a flat 2.5 m/s²
+with nothing pushing back. Replaced with tractive effort that falls as power
+over speed, and resistance that rises with the square of speed.
+
+Measured: the gain per five seconds falls from 12.13 m/s to 4.69 m/s. Coasting
+from 40 m/s loses 2.41 m/s in five seconds. The ceiling near 241 km/h is now the
+machine, not a written cap.
+
+The platform narrowed from 360 m to 240 m, because the new curve widened the win
+band to 290 m. Bands are now 160 m to 190 m.
+
+- Contract: revision 5, checks C1 to C23. All 23 pass.
+- State: revision 5 is DRAFT. It waits for a signature.

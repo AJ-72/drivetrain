@@ -3,7 +3,7 @@
 // with the contract, stop and ask a human.
 //
 // Run:  node test/contract.mjs
-// Exit: 0 only when all 21 checks pass.
+// Exit: 0 only when all 23 checks pass.
 
 import { createRequire } from "module";
 import { fileURLToPath } from "url";
@@ -958,6 +958,93 @@ async function C21(ctx) {
   c.done(`gain per 5 s falls ${early.toFixed(2)} -> ${later.toFixed(2)} m/s; coasting loses ${drop.toFixed(2)} m/s`);
 }
 
+// C22 — every result must state its cause. A result that names only the winner
+// teaches nothing, and a player who loses while inside the platform cannot tell
+// why.
+async function C22(ctx) {
+  const c = new Check("C22");
+  const { page } = await openPage(ctx);
+  const reason = () => page.evaluate(() => {
+    const el = document.querySelector("#reason");
+    return el ? el.textContent.trim() : "<no #reason element>";
+  });
+
+  await driveToBrake(page, WIN_BRAKE_M, PIN);
+  await page.waitForTimeout(60);
+  const win = await reason();
+  c.ok(/^stopped \d+ m into the platform$/.test(win), `WIN reason: "${win}"`);
+
+  await driveToBrake(page, SHORT_BRAKE_M, PIN);
+  await page.waitForTimeout(60);
+  const under = await reason();
+  c.ok(/^stopped \d+ m short of the platform$/.test(under), `UNDERSHOT reason: "${under}"`);
+
+  await page.evaluate(() => {
+    const d = window.__drivetrain;
+    d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
+    d.test.setInput({ throttle: true, brake: false });
+    let g = 0;
+    while (d.state === "RACING" && g < 60000) { d.test.step(1); g += 1; }
+  });
+  await page.waitForTimeout(60);
+  const over = await reason();
+  c.ok(/track|past the platform/.test(over), `OVERSHOT reason: "${over}"`);
+
+  await page.evaluate(() => {
+    const d = window.__drivetrain;
+    d.test.start({ rivalMax: 33, platformStart: 1400, grip: "DRY" });
+    let g = 0;
+    while (d.state === "RACING" && g < 60000) { d.test.step(1); g += 1; }
+  });
+  await page.waitForTimeout(60);
+  const idle = await reason();
+  c.ok(/stood still/.test(idle), `RIVAL WINS reason when idle: "${idle}"`);
+
+  // no reason line may contain another result word
+  for (const text of [win, under, over, idle]) {
+    for (const word of RESULTS) {
+      c.ok(!text.toUpperCase().includes(word), `a reason line must not contain ${word}: "${text}"`);
+    }
+  }
+  await page.close();
+  c.done(`four causes stated, longest "${win}"`);
+}
+
+// C23 — the rival's final brake is the deadline, so it must be visible.
+async function C23(ctx) {
+  const c = new Check("C23");
+  const { page } = await openPage(ctx);
+  const r = await page.evaluate(() => {
+    const d = window.__drivetrain;
+    // The player sends no input, so the race lasts until the rival stops. At
+    // full power the player runs off the end of the track first and the rival
+    // never reaches its brake.
+    d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
+    let g = 0;
+    const out = { early: null, firedAtRivalPos: null };
+    while (d.state === "RACING" && g < 60000) {
+      d.test.step(1); g += 1;
+      if (out.early === null && d.rivalPos > 300) out.early = d.rivalBraking;
+      if (out.firedAtRivalPos === null && d.rivalBraking) out.firedAtRivalPos = d.rivalPos;
+      if (d.rivalBraking) break;
+    }
+    out.target = d.track.platformStart + 120;
+    return out;
+  });
+  c.eq(r.early, false, "the warning must not fire early");
+  c.ok(r.firedAtRivalPos !== null, "the warning must fire");
+  c.ok(r.firedAtRivalPos < r.target,
+    `the rival must begin braking before its stopping point: ${r.firedAtRivalPos} vs ${r.target}`);
+
+  await page.waitForTimeout(100);
+  const banner = await page.evaluate(() =>
+    (document.querySelector("#callout").textContent || "").trim());
+  c.ok(banner.includes("RIVAL IS STOPPING"), `the banner must warn: "${banner}"`);
+
+  await page.close();
+  c.done(`warned at rival ${r.firedAtRivalPos.toFixed(0)} m, target ${r.target} m`);
+}
+
 // --------------------------------------------------------------------- main
 
 async function main() {
@@ -968,10 +1055,11 @@ async function main() {
     () => C5(), () => C6(), () => C7(shared), () => C8(shared),
     () => C9(shared), () => C10(), () => C11(shared), () => C12(), () => C13(),
     () => C14(), () => C15(shared), () => C16(shared), () => C17(shared),
-    () => C18(shared), () => C19(shared), () => C20(shared), () => C21(shared)
+    () => C18(shared), () => C19(shared), () => C20(shared), () => C21(shared),
+    () => C22(shared), () => C23(shared)
   ];
   const ids = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10",
-               "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19", "C20", "C21"];
+               "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19", "C20", "C21", "C22", "C23"];
   for (let i = 0; i < stages.length; i += 1) {
     try {
       await stages[i]();

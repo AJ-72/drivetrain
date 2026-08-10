@@ -16,6 +16,8 @@ Status: DRAFT. The user must sign revision 5.
 | The platform narrows to 240 m | Under the new curve the win band grew to 290 m, which made the stop too easy. 240 m brings the band back to 160 m to 190 m. |
 | The stop marker uses an exact integral | Braking distance is no longer speed squared over twice the brake, because resistance helps the brake. C19 holds the marker to 5 m. |
 | C21 is new | It proves the pull tapers and that coasting loses real speed. A constant pull was the defect. |
+| Every result states its cause | The user lost a race while inside the platform and could not tell why. `RIVAL WINS` named the winner and nothing else. C22 is new. |
+| The rival's final brake is announced | The deadline was invisible. Nothing on screen said the race was about to end. C23 is new. |
 
 ### What changed from revision 3, and why
 
@@ -353,6 +355,36 @@ Assertions:
   the first.
 - Coasting from 40 m/s loses more than 2 m/s in five seconds.
 
+### C22 — Every result states its cause
+
+A result that names only the winner teaches nothing. A player can lose while
+standing inside the platform and have no way to tell why.
+
+Steps: reach each of the four results and read `#reason`.
+
+Assertions:
+
+- `WIN` reads `stopped N m into the platform`.
+- `UNDERSHOT` reads `stopped N m short of the platform`.
+- `OVERSHOT` names the track end, or the distance past the platform.
+- `RIVAL WINS` names the speed the train still carried, or says the train stood
+  still.
+- No reason line contains any of the four result words.
+
+### C23 — The rival's final brake is announced
+
+The rival's stop is the deadline. It must not be invisible.
+
+Steps: send no input, so the race lasts until the rival stops. At full power the
+player runs off the track first and the rival never reaches its brake.
+
+Assertions:
+
+- The warning has not fired while the rival is still below 300 m.
+- The warning fires.
+- The rival begins braking before its own stopping point.
+- The banner reads `RIVAL IS STOPPING`.
+
 ### C14 — The published file works
 
 Every other check reads `index.html`. The file that ships is
@@ -411,4 +443,4 @@ Revision 2 was signed on 2026-08-10 and covered C1 to C13.
 Revisions 3 and 4 were built and measured but never signed. Revision 5
 supersedes both.
 
-- [ ] The user accepts checks C1 to C21 as revision 5.
+- [ ] The user accepts checks C1 to C23 as revision 5.

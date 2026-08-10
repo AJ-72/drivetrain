@@ -86,6 +86,8 @@ These numbers give this behaviour:
 - The rival leads early, because it accelerates at 4.0 against the player's 2.5.
 - The rival pushes harder when the player pulls a lead, and never passes 36 m/s.
 - A distant signal stands 400 m before the platform and calls out the distance.
+- When the rival begins its final brake, the screen calls `RIVAL IS STOPPING`.
+  The rival's stop is the deadline, so it must not be invisible.
 - A live stop marker on the rail shows where the train would stop if the driver
   braked now. Check C19 holds it to within 5 m of the truth.
 - The screen never states the rival speed. A driver reads a rival by eye, not
@@ -151,6 +153,17 @@ The result is exactly one of four strings:
 | `UNDERSHOT` | The nose stops before the platform zone. |
 | `OVERSHOT` | The nose stops after the platform zone, or the train reaches the track end. |
 | `RIVAL WINS` | The rival completes its stop, and the player holds no result yet. |
+
+Every result also states its cause on the screen, in a line below the result:
+
+| Result | The line reads |
+|---|---|
+| `WIN` | stopped N m into the platform |
+| `UNDERSHOT` | stopped N m short of the platform |
+| `OVERSHOT` | ran N m past the platform, or ran out of track |
+| `RIVAL WINS` | you were still moving at N km/h, or the rival stopped while you stood still |
+
+No cause line may contain a result word.
 
 Extra rules:
 

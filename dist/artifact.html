@@ -120,6 +120,14 @@ html, body {
   background: var(--ink); color: var(--panel);
 }
 #result:empty { display: none; }
+#reason {
+  font-family: var(--font-sign);
+  font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--ink); background: var(--panel);
+  padding: 3px 10px; border-radius: 3px;
+}
+#reason:empty { display: none; }
+#callout b.urgent { background: var(--stop); }
 #newbest {
   font-family: var(--font-sign);
   font-size: 11px; font-weight: 800; letter-spacing: 0.16em;
@@ -174,6 +182,7 @@ html, body {
     <div id="callout"></div>
     <div id="overlay">
       <div id="result"></div>
+      <div id="reason"></div>
       <div id="newbest"></div>
     </div>
   </div>
@@ -240,7 +249,8 @@ const S = {
   result: null,
   playerPos: 0, playerSpeed: 0, playerArmed: false,
   rivalPos: 0,  rivalSpeed: 0,  rivalArmed: false, rivalDone: false,
-  rivalMax: 0,  rivalBase: 0, rivalTargetM: 0,
+  rivalMax: 0,  rivalBase: 0, rivalTargetM: 0, rivalBraking: false,
+  endSpeed: 0,
   platformStart: 0, platformEnd: 0, warnAtM: 0, passedWarn: false,
   gripName: "DRY", grip: 1,
   forcedRivalMax: null, forcedPlatformStart: null, forcedGrip: null,
@@ -284,6 +294,7 @@ function brakeDistance(speed, decel) {
 }
 
 function finish(result) {
+  S.endSpeed = S.playerSpeed;
   S.result = result;
   S.state = "RESULT";
   if (result === "WIN") recordBest(S.elapsedMs);
@@ -333,6 +344,7 @@ function step() {
     S.rivalMax = Math.min(S.rivalBase + push, K.RIVAL_HARD_CAP) * railFactor;
     // It brakes at the last moment its own stopping distance allows.
     const braking = (S.rivalTargetM - r.pos) <= brakeDistance(r.speed, K.RIVAL_BRAKE);
+    if (braking) S.rivalBraking = true;
     stepTrain(r, !braking, braking,
               { fmax: K.RIVAL_FMAX, power: K.RIVAL_POWER, brake: K.RIVAL_BRAKE },
               S.rivalMax);
@@ -360,6 +372,8 @@ function startRace() {
   S.rivalTargetM = S.platformStart + K.PLATFORM_WIDTH_M / 2;
   S.warnAtM = S.platformStart - K.WARN_BEFORE_M;
   S.passedWarn = false;
+  S.rivalBraking = false;
+  S.endSpeed = 0;
 
   const grip = S.forcedGrip !== null
     ? (K.GRIPS.find((x) => x.name === S.forcedGrip) || K.GRIPS[0])
@@ -444,11 +458,31 @@ const el = {
   rail:    document.getElementById("rail"),
   stopin:  document.getElementById("stopin"),
   callout: document.getElementById("callout"),
+  reason:  document.getElementById("reason"),
   togo:    document.getElementById("togo"),
   scene:   document.getElementById("scene")
 };
 
 function secs(ms) { return (ms / 1000).toFixed(2) + "s"; }
+
+// A result names the winner. It must also name the cause, or a loss teaches
+// nothing. None of these lines may contain another result word.
+function reasonText() {
+  if (S.state !== "RESULT") return "";
+  const m = (v) => Math.round(v) + " m";
+  if (S.result === "WIN") {
+    return "stopped " + m(S.playerPos - S.platformStart) + " into the platform";
+  }
+  if (S.result === "UNDERSHOT") {
+    return "stopped " + m(S.platformStart - S.playerPos) + " short of the platform";
+  }
+  if (S.result === "OVERSHOT") {
+    if (S.playerPos >= K.TRACK_LENGTH_M) return "ran out of track";
+    return "ran " + m(S.playerPos - S.platformEnd) + " past the platform";
+  }
+  if (S.endSpeed < 1) return "the rival stopped while you stood still";
+  return "you were still moving at " + Math.round(S.endSpeed * 3.6) + " km/h";
+}
 
 function setText(node, text) {
   if (node && node.textContent !== text) node.textContent = text;
@@ -458,6 +492,7 @@ function render() {
   setText(el.time, secs(S.elapsedMs));
   setText(el.best, S.bestMs === null ? "--" : secs(S.bestMs));
   setText(el.result, S.state === "RESULT" ? S.result : "");
+  setText(el.reason, reasonText());
   setText(el.newbest, S.state === "RESULT" && S.newBest
     ? (S.bestSaved ? "NEW BEST" : "NEW BEST (NOT SAVED)")
     : "");
@@ -480,11 +515,15 @@ function render() {
     el.stopin.classList.toggle("late", S.state === "RACING" && S.playerPos + needs > S.platformEnd);
   }
   if (el.callout) {
-    const showCall = S.state === "RACING" && S.passedWarn
-      && S.playerPos < S.platformStart;
-    el.callout.innerHTML = showCall
-      ? "<b>DISTANT SIGNAL &middot; PLATFORM " + Math.max(0, Math.round(toPlatform)) + " M</b>"
-      : "";
+    const racing = S.state === "RACING";
+    if (racing && S.rivalBraking) {
+      el.callout.innerHTML = "<b class=\"urgent\">RIVAL IS STOPPING &middot; BRING IT TO A STAND</b>";
+    } else if (racing && S.passedWarn && S.playerPos < S.platformStart) {
+      el.callout.innerHTML =
+        "<b>DISTANT SIGNAL &middot; PLATFORM " + Math.max(0, Math.round(toPlatform)) + " M</b>";
+    } else {
+      el.callout.innerHTML = "";
+    }
   }
   if (el.throttle) el.throttle.classList.toggle("on", S.input.throttle);
   if (el.brake) el.brake.classList.toggle("on", S.input.brake);
@@ -954,6 +993,7 @@ window.__drivetrain = {
   get grip()        { return S.gripName; },
   get stopInM()     { return brakeDistance(S.playerSpeed, K.BRAKE_DECEL); },
   get passedWarn()  { return S.passedWarn; },
+  get rivalBraking(){ return S.rivalBraking; },
   get elapsedMs()   { return S.elapsedMs; },
   get bestMs()      { return S.bestMs; },
   get track() {
