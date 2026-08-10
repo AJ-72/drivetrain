@@ -68,3 +68,56 @@ The candidate matches every number in the brief.
 - Halt reason: stop condition 2. The next task T2 is `[STRUCTURAL]`. The fix
   also changes signed code.
 - State: BLOCKED. I wait for the user.
+
+## Cycle 3 — T1 fix and T2, The full test harness
+
+- Task: T1 fix, then T2 `[STRUCTURAL]`.
+- Changed:
+  - `index.html`: `stepTrain` now moves the train first and changes the speed
+    second. A comment states why.
+  - Added `test/contract.mjs` with all 13 checks.
+- Proof for the T1 fix: a brake at 1420 m now stops at 1740.67 m and gives
+  `WIN`. The best time is 59.500 s. The rival stops at 63.200 s. Every number
+  matches `BRIEF.md` section 3.
+- Proof for T2: the command prints 13 lines. The command does not crash. The
+  exit code is 1.
+- Contract: 4 of 13 checks pass.
+
+```
+FAIL C1  no #result element
+FAIL C2  no #result element
+FAIL C3  no #result element
+FAIL C4  no #best element, bestMs stays null
+PASS C5  blocked, not-a-number, and -1
+FAIL C6  harness error, no #start element
+PASS C7  OVERSHOT, OVERSHOT, OVERSHOT
+PASS C8  1 request, 4704 bytes
+FAIL C9  no #result element
+FAIL C10 harness error, no #start element
+PASS C11 WIN band: 1420..1560 (140 m)
+FAIL C12 harness error, no #start element
+FAIL C13 harness error, no #start element
+```
+
+### SURPRISING — C11 passes before the game has a screen
+
+The win band measures 140 m against a 120 m floor. Task T4 asks for this number
+and the number is already correct. The core claim of the game holds.
+
+### SURPRISING — the plan orders two tasks wrongly
+
+`PLAN.md` puts T3 before T5. T3 must turn C1, C2, C3, and C9 green. Those checks
+read text from `#result` and `#time`. Those elements arrive at T5.
+
+T3 cannot pass before the page has a DOM. The plan has a defect, not the code.
+
+Proposed repair, for a human to accept:
+
+- T3 grows to include the DOM skeleton: `#start`, `#throttle`, `#brake`,
+  `#result`, `#time`, `#best`, `#newbest`.
+- T5 keeps only the canvas art, the camera, and the themes.
+- T6 keeps the input handling.
+- No check changes. `CONTRACT.md` stays frozen.
+
+- Halt reason: the user keeps the halt at T2.
+- State: BLOCKED. I wait for the user.

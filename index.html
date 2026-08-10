@@ -42,11 +42,14 @@ function stepTrain(train, throttle, brake) {
   else if (throttle) a =  K.THROTTLE_ACCEL;
   else               a = -K.COAST_DECEL;
 
+  // The train moves first, then the speed changes. This order matches the
+  // arithmetic in BRIEF.md section 3. The reverse order loses 0.34 m over a
+  // full brake and check C1 fails.
+  train.pos += train.speed * K.FIXED_DT;
   train.speed += a * K.FIXED_DT;
   if (train.speed > K.MAX_SPEED) train.speed = K.MAX_SPEED;
   if (a < 0 && train.speed < K.STOP_EPSILON) train.speed = 0;
   if (train.speed < 0) train.speed = 0;
-  train.pos += train.speed * K.FIXED_DT;
 }
 
 function finish(result) {
