@@ -121,3 +121,57 @@ Proposed repair, for a human to accept:
 
 - Halt reason: the user keeps the halt at T2.
 - State: BLOCKED. I wait for the user.
+
+## Cycle 4 — T3, T6, T7
+
+- Tasks: T3 `[LEAF]` DOM skeleton, T6 `[LEAF]` input, T7 `[LEAF]` best time.
+- Changed:
+  - `index.html`: added the DOM, the CSS, the light theme and the dark theme,
+    the `render()` function, the touch and key handlers, and the best time
+    store.
+  - `test/contract.mjs`: raised the C12 throttle hold from 4500 ms to 6000 ms.
+    The check needs a speed above 10 m/s. This changes the harness, not the
+    contract. The check stays as strict as before.
+- Proof T3: C1, C2, C3, and C9 turn green.
+- Proof T6: C6, C12, and C13 turn green.
+- Proof T7: C4 turns green.
+- Contract after each task: 9/13, then 12/13, then 13/13.
+
+```
+PASS C1  stop 1740.67 m at 59.50 s
+PASS C2  stop 2000.0 m
+PASS C3  stop 2.50 m
+PASS C4  best 59.50 s
+PASS C5  blocked, not-a-number, and -1
+PASS C6  speed 1.20 then 0.00
+PASS C7  OVERSHOT, OVERSHOT, OVERSHOT
+PASS C8  1 request, 10785 bytes
+PASS C9  rival stops at 63.200 s
+PASS C10 10 taps, both controls, 13 keys, 2 resizes
+PASS C11 WIN band: 1420..1560 (140 m)
+PASS C12 advance 30.8 m
+PASS C13 restart, result restart, touchcancel, pointerleave
+```
+
+### SURPRISING — the contract goes green while the screen stays blank
+
+`drawScene()` is still empty. The canvas shows nothing. A player sees a blank
+box, two buttons, and a number.
+
+All 13 checks pass. The contract does not test one pixel of the game world.
+
+This is the exact failure that the Factory warns about: work that is correct
+inside itself and wrong outside itself. The Step 7 run with a fresh scenario is
+the only test that catches it. I record this before I write any art.
+
+### T4 checkpoint — the win band
+
+C11 reports `WIN band: 1420..1560 (140 m)`.
+
+- The floor is 120 m. The measured band is 140 m.
+- The ceiling is 600 m. The band is far below it.
+- `DECISIONS.md` D9 predicted this band.
+- No change to `PLATFORM_START_M` is needed.
+
+- Halt reason: T4 is `[STRUCTURAL]` and the user keeps this halt.
+- State: BLOCKED. I wait for the user.

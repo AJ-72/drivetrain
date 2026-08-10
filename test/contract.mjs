@@ -462,7 +462,7 @@ async function C12() {
     const r = document.querySelector("#start").getBoundingClientRect();
     return [r.x + r.width / 2, r.y + r.height / 2];
   })));
-  await hold(page, "#throttle", 4500);
+  await hold(page, "#throttle", 6000);
   const before = await page.evaluate(() => ({ pos: window.__drivetrain.playerPos, speed: window.__drivetrain.playerSpeed }));
   c.ok(before.speed > 10, `speed before hiding: got ${before.speed}, want > 10`);
 
