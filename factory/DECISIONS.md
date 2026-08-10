@@ -69,3 +69,33 @@ This log holds each choice, the rejected options, and the known cost.
 - Evidence: the container holds `playwright@1.56.1` at
   `/opt/node22/lib/node_modules`. A test launch of Chromium succeeded.
 - Step: 2.
+
+## D8 — A fresh-context reviewer rejected contract revision 1
+
+- Action: the user asked for a check by a higher model. `claude-opus-5` is the
+  highest model here, so I ran a fresh-context Opus reviewer instead.
+- Input to the reviewer: `BRIEF.md` and `CONTRACT.md` only.
+- Verdict: NOT SIGNABLE. Four blockers and eight further findings.
+- The four blockers:
+  1. The platform zone had no coordinates and no length.
+  2. No check bounded the win band, so an unwinnable game passed every check.
+  3. No check said how a script drives a real-time simulation.
+  4. Checks asserted on strings that the builder itself chooses.
+- Class of gap: absences again, as in D4. A reread does not show a missing
+  number. A fresh context does.
+- Cost: revision 2 adds a debug interface to the shipped page. The game carries
+  test hooks in production. This is acceptable for a game.
+- Step: 2.
+
+## D9 — Fixed physics constants
+
+- Chosen: track 2000 m, platform 1740 m to 1900 m, accel 2.5, brake 2.5, coast
+  0.15, max speed 40, rival finish 63.2 s, fixed step 1/60 s.
+- Rejected: leave the tuning to the builder.
+- Derived behaviour: the best time is 59.5 s. A valid stop needs a brake between
+  1420 m and 1580 m. A win needs a brake below about 1568 m.
+- Cost: the win band measures about 140 m on the 10 m test grid. That is above
+  the 120 m floor, but the margin is small. If check C11 fails, move
+  `PLATFORM_START_M` down and record the change here.
+- Reason: a weaker builder model invents numbers when the plan omits them.
+- Step: 2.

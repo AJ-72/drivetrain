@@ -2,6 +2,8 @@
 
 Project: drivetrain
 Date: 2026-08-10
+Revision: 2. A fresh-context reviewer returned NOT SIGNABLE on revision 1. This
+revision applies every blocker fix and every major fix.
 Status: DRAFT. The user must sign this file.
 
 ## The freeze rule
@@ -21,124 +23,201 @@ One command runs all checks. The command is verbatim code:
 node test/contract.mjs
 ```
 
-The command prints one line for each check. The command exits with code 0 only
-when every check passes.
+Rules for the harness:
 
-The harness drives a real Chromium browser at a phone screen size of 390 by 844
-pixels. The harness loads `index.html` from a local file path. The harness uses
-the Playwright package that the container already holds. The harness installs
-nothing.
+- The harness prints one line for each check. The line starts with `PASS` or
+  `FAIL`.
+- The harness exits with code 0 only when every check passes.
+- The harness drives Chromium at a screen size of 390 by 844 pixels.
+- The harness loads `index.html` through a `file://` path.
+- The harness loads Playwright from the global path in the container. The
+  harness installs no package.
+- The harness reads game state through `window.__drivetrain`. The harness does
+  not read pixels.
+- The harness drives the simulation through `window.__drivetrain.test`, except
+  in C6. Real time never decides a result.
 
 ## The checks
 
 ### C1 — A clean win
 
-The player drives the train, brakes at the correct point, and stops inside the
-platform zone before the rival.
+Steps: `test.start()`, then `setInput({throttle:true})`, then step until
+`playerPos >= 1420`, then `setInput({brake:true})`, then step until
+`state === 'RESULT'`.
 
-- Result text shows `WIN`.
-- The screen shows a time in seconds.
+Assertions:
 
-Human check: open the page, tap START, hold THROTTLE, release it near the
-station, hold BRAKE, and stop on the platform. See WIN and a time.
+- `result === 'WIN'`.
+- `1740 <= playerPos <= 1900`.
+- `playerSpeed === 0`.
+- `elapsedMs < 63200`.
+- The visible text contains `WIN`.
+- The visible text does not contain `UNDERSHOT`, `OVERSHOT`, or `RIVAL WINS`.
+- The visible time matches the pattern `^\d+\.\d{2}s$`.
+
+Human check: open the page, tap START, hold THROTTLE, release near the station,
+hold BRAKE, and stop on the platform. See `WIN` and a time.
 
 ### C2 — An overshoot
 
-The player holds THROTTLE from the start to the end of the track.
+Steps: `test.start()`, then `setInput({throttle:true})`, then step until
+`state === 'RESULT'` or 6000 steps pass.
 
-- Result text shows `OVERSHOT`.
-- The player loses, even when the train passes the rival.
+Assertions:
 
-Human check: open the page, tap START, and hold THROTTLE without stopping. See
-OVERSHOT.
+- `result === 'OVERSHOT'`.
+- `playerPos > 1900`.
+- The visible text contains `OVERSHOT` and no other result string.
 
 ### C3 — A stop short
 
-The player brakes early and the train stops before the platform zone.
+Steps: `test.start()`, then `setInput({throttle:true})` for 60 steps, then
+`setInput({brake:true})`, then step until `state === 'RESULT'`.
 
-- Result text shows `UNDERSHOT`.
-- The player loses.
-- The player cannot drive again after the stop. Only a restart begins a new
-  race.
+Assertions:
 
-Human check: open the page, tap START, add a little power, then hold BRAKE at
-once. See UNDERSHOT.
+- `result === 'UNDERSHOT'`.
+- `playerPos < 1740`.
+- `playerSpeed === 0` exactly.
+- After the result, `setInput({throttle:true})` and 600 more steps leave
+  `playerPos` unchanged.
 
-### C4 — The best time survives a reload
+### C4 — The best time behaves correctly
 
-The player wins a race. The screen shows `NEW BEST` and the time.
+Sub-checks, all required:
 
-The player closes the page and opens the same page again.
-
-- The start screen still shows the same best time.
-
-Human check: win a race, note the time, reload the link, and read the best time.
+- (a) First win with empty storage: the text contains `NEW BEST`, and `bestMs`
+  equals the winning `elapsedMs`.
+- (b) Reload with `page.reload()`: the start screen shows the same best time
+  string, and `bestMs` is the same integer.
+- (c) A new page in the same context through `context.newPage()`: the start
+  screen shows the same best time string.
+- (d) A slower win: the text does not contain `NEW BEST`, and `bestMs` does not
+  change.
 
 ### C5 — Broken storage never breaks the game
 
-The browser storage is blocked, or the stored value is damaged text.
+Three sub-cases, all required. Each case uses a new page.
 
-- The page still loads.
-- The start screen still appears.
-- The player can still start and finish a race.
-- No error dialog appears.
+- (a) `addInitScript` replaces `window.localStorage` with `getItem` and
+  `setItem` that throw a `SecurityError`.
+- (b) The stored value is the text `not-a-number`.
+- (c) The stored value is the text `-1`.
 
-Human check: not required. The harness blocks the storage and damages the value.
+Assertions in each case:
+
+- `state` reaches `IDLE` after load.
+- A full race through `test` reaches `state === 'RESULT'`.
+- The `pageerror` count is 0.
+- No `dialog` event fires.
 
 ### C6 — Touch alone plays the whole game
 
-The harness uses touch events only. The harness sends no key press.
+This check uses real touch events. This check does not use `test`. This check
+sends no key press.
 
-- A touch on THROTTLE adds speed.
-- A touch on BRAKE removes speed.
-- A touch on START begins a race.
-- Both buttons measure at least 64 pixels in height and in width.
-- The page does not scroll sideways at 390 pixels wide.
+Assertions:
+
+- A touch on START moves `state` to `RACING`.
+- A touch and hold on THROTTLE for 500 ms raises `playerSpeed` above 0.
+- A touch and hold on BRAKE for 500 ms lowers `playerSpeed`.
+- `getBoundingClientRect()` on each control gives width >= 64 and height >= 64.
+- Each measured element carries the input listener.
+- `document.documentElement.scrollWidth <= 390`.
 
 Human check: play one full race on the phone with your thumbs only.
 
 ### C7 — Full power always loses
 
-Full power from the start to the station always ends in OVERSHOT.
-
-The harness runs this check three times. All three runs show OVERSHOT.
-
-This check protects the reason the game exists. The brake point must be the real
-decision.
+The harness runs C2 three times with a new page each time. All three runs give
+`OVERSHOT`.
 
 ### C8 — The page is self-contained
 
-The page loads no external host.
+Assertions:
 
-- The harness records every network request.
-- The only allowed request is the local page file itself.
-- Zero requests go to any other host.
+- The harness records every network request. Zero requests go to a host other
+  than the local file.
+- The text of `index.html` contains zero occurrences of `http://`, `https://`,
+  `//cdn`, and `@import`.
+- No `<script src>` and no `<link rel="stylesheet">` points outside the file.
+- The repository holds no sibling `.js` file and no sibling `.css` file that
+  `index.html` needs.
+- The size of `index.html` is below 16 MB.
 
 ### C9 — The rival can win
 
-The player starts a race and then touches nothing.
+Steps: `test.start()`, then send no input, then step for 4200 steps.
 
-- The rival completes its stop first.
-- Result text shows a loss for the player.
-- The result names the rival as the winner.
+Assertions:
+
+- `result === 'RIVAL WINS'`.
+- `rivalDone === true`.
+- The rival finish time is 63200 ms, with a tolerance of 200 ms.
+- The visible text contains `RIVAL WINS` and no other result string.
 
 ### C10 — Hostile input does not break the page
 
-The harness performs these actions in order:
+The harness registers `page.on('pageerror')` and `page.on('console')` before it
+loads the page.
 
-- It taps START ten times fast.
-- It holds THROTTLE and BRAKE at the same time.
-- It presses many keys that the game does not use.
-- It resizes the window to 320 by 480 pixels and to 1280 by 900 pixels.
+Actions, in order:
 
-Results:
+1. Tap START ten times, at 50 ms intervals.
+2. Hold THROTTLE and BRAKE together for 60 steps.
+3. Press each of these keys one time: `a b q z Escape Enter Tab Shift Control 1
+   9 ArrowLeft ArrowRight`.
+4. Resize the window to 320 by 480, then to 1280 by 900.
 
-- The page throws no uncaught error at any point.
-- The console shows no error message.
-- The game still reaches a result.
+Assertions:
+
+- The `pageerror` count is 0.
+- The `console.error` count is 0 and the `console.warn` count is 0.
+- `window.onerror === null`. The game installs no handler that hides errors.
+- While the player holds both controls, `playerSpeed` does not rise.
+- The game still reaches `state === 'RESULT'`.
+
+### C11 — The win band has a usable width
+
+The harness sweeps the brake point. For each `x` from 0 to 2000 in steps of 10:
+
+- Load a new page.
+- `test.start()`, hold throttle, step until `playerPos >= x`, then hold brake,
+  then step until `state === 'RESULT'`.
+- Record `result`.
+
+Assertions:
+
+- The set of `x` values that give `WIN` forms one contiguous band.
+- The band measures at least 120 m.
+- The band measures at most 600 m.
+- The harness prints the measured band, for example `WIN band: 1420..1560`.
+
+This check stops an unwinnable game and it stops a trivial game.
+
+### C12 — A hidden tab does not lose the race
+
+Steps: start a race with the real animation loop, reach a speed above 10, then
+dispatch `visibilitychange` to hidden, wait 2 s, then return to visible.
+
+Assertions:
+
+- `playerPos` advances by less than `speed * 2` metres plus 5 m.
+- `state` is still `RACING`.
+- The `pageerror` count is 0.
+
+### C13 — Restart and lost touch behave correctly
+
+Assertions:
+
+- A restart during `RACING` gives `state === 'IDLE'`, `playerPos === 0`, and
+  `playerSpeed === 0`.
+- A START press during `RESULT` begins a new race.
+- A `touchcancel` on THROTTLE clears the throttle. `playerSpeed` stops rising.
+- A `pointerleave` on THROTTLE clears the throttle.
 
 ## Sign-off
 
 The user signs here. I do not start Step 3 before the signature.
 
-- [ ] The user accepts checks C1 to C10.
+- [ ] The user accepts checks C1 to C13.

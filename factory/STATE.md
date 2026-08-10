@@ -1,6 +1,6 @@
-STEP: 1 (the interview)
-NEXT_ARTIFACT: factory/BRIEF.md
-LAST_ACTION: wrote factory/GROUND_TRUTH.md with task T0
-BLOCKED_ON: interview answers from the user
+STEP: 2 (the acceptance contract)
+NEXT_ARTIFACT: factory/PLAN.md
+LAST_ACTION: applied the fresh-context review and wrote CONTRACT.md revision 2
+BLOCKED_ON: user sign-off on checks C1 to C13
 TASKS_DONE: 0/0
 CONSECUTIVE_FAILURES: 0
