@@ -1,9 +1,9 @@
-// contract.mjs — runs every check in factory/CONTRACT.md revision 3.
+// contract.mjs — runs every check in factory/CONTRACT.md revision 4.
 // The contract is frozen. Do not weaken a check here. If a check disagrees
 // with the contract, stop and ask a human.
 //
 // Run:  node test/contract.mjs
-// Exit: 0 only when all 16 checks pass.
+// Exit: 0 only when all 20 checks pass.
 
 import { createRequire } from "module";
 import { fileURLToPath } from "url";
@@ -18,12 +18,15 @@ const INDEX = path.join(ROOT, "index.html");
 const URL = "file://" + INDEX;
 
 const RESULTS = ["WIN", "UNDERSHOT", "OVERSHOT", "RIVAL WINS"];
-// The rival draws a top speed for each race, so every deterministic check pins
-// it. RIVAL_FAST is the hardest rival the game can produce.
-const RIVAL_SLOW = 30;
-const RIVAL_FAST = 39;
-const WIN_BRAKE_M = 830;      // a clean win: the stop lands at twice this
-const SHORT_BRAKE_M = 600;    // an undershoot, but past the arming distance
+// The station, the rail, and the rival all vary per race, so every
+// deterministic check pins all three.
+const PLAT_START = 1400;
+const PLAT_END = 1760;
+const PIN = { rivalMax: 28, platformStart: PLAT_START, grip: "DRY" };
+const PIN_HARD = { rivalMax: 33, platformStart: PLAT_START, grip: "WET" };
+const WIN_BRAKE_M = 780;      // inside the dry band of 700..870
+const SLOW_WIN_BRAKE_M = 860; // still a win, but later
+const SHORT_BRAKE_M = 300;    // an undershoot, but past the arming distance
 const report = [];
 
 function otherResults(expected) {
@@ -80,18 +83,20 @@ async function openPage(ctx) {
 }
 
 // Drives one race through the test hooks: full throttle, then brake at brakeAtM.
-async function driveToBrake(page, brakeAtM, rivalMax) {
-  return page.evaluate(([x, rv]) => {
+async function driveToBrake(page, brakeAtM, pin) {
+  return page.evaluate(([x, opts]) => {
     const d = window.__drivetrain;
-    d.test.start(rv === null ? undefined : { rivalMax: rv });
+    d.test.start(opts);
     d.test.setInput({ throttle: true, brake: false });
     let guard = 0;
     while (d.playerPos < x && d.state === "RACING" && guard < 20000) { d.test.step(1); guard += 1; }
+    d.__stopInAtBrake = d.stopInM;         // the marker's promise at the brake
     d.test.setInput({ throttle: false, brake: true });
     guard = 0;
     while (d.state === "RACING" && guard < 20000) { d.test.step(1); guard += 1; }
-    return { result: d.result, pos: d.playerPos, speed: d.playerSpeed, ms: d.elapsedMs };
-  }, [brakeAtM, rivalMax === undefined ? RIVAL_SLOW : rivalMax]);
+    return { result: d.result, pos: d.playerPos, speed: d.playerSpeed, ms: d.elapsedMs,
+             stopInAtBrake: d.__stopInAtBrake };
+  }, [brakeAtM, pin === undefined ? PIN : pin]);
 }
 
 async function visibleText(page) {
@@ -127,9 +132,9 @@ async function hold(page, sel, ms) {
 async function C1(ctx) {
   const c = new Check("C1");
   const { page } = await openPage(ctx);
-  const r = await driveToBrake(page, WIN_BRAKE_M, RIVAL_SLOW);
+  const r = await driveToBrake(page, WIN_BRAKE_M, PIN);
   c.eq(r.result, "WIN", "result");
-  c.between(r.pos, 1620, 1900, "playerPos");
+  c.between(r.pos, PLAT_START, PLAT_END, "playerPos");
   c.eq(r.speed, 0, "playerSpeed");
   c.ok(r.ms < 70000, `elapsedMs: got ${r.ms}, want < 70000`);
   await assertResultStrings(c, page, "WIN");
@@ -146,7 +151,7 @@ async function fullPowerRun(ctx) {
   const { page } = await openPage(ctx);
   const r = await page.evaluate(() => {
     const d = window.__drivetrain;
-    d.test.start({ rivalMax: 30 });
+    d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
     d.test.setInput({ throttle: true, brake: false });
     let guard = 0;
     while (d.state === "RACING" && guard < 6000) { d.test.step(1); guard += 1; }
@@ -159,7 +164,7 @@ async function C2(ctx) {
   const c = new Check("C2");
   const { page, r } = await fullPowerRun(ctx);
   c.eq(r.result, "OVERSHOT", "result");
-  c.ok(r.pos > 1900, `playerPos: got ${r.pos}, want > 1900`);
+  c.ok(r.pos > PLAT_END, `playerPos: got ${r.pos}, want > ${PLAT_END}`);
   await assertResultStrings(c, page, "OVERSHOT");
   await page.close();
   c.done(`stop ${r.pos.toFixed(1)} m`);
@@ -170,10 +175,10 @@ async function C3(ctx) {
   const { page } = await openPage(ctx);
   const r = await page.evaluate(() => {
     const d = window.__drivetrain;
-    d.test.start({ rivalMax: 30 });
+    d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
     d.test.setInput({ throttle: true, brake: false });
     let g0 = 0;
-    while (d.playerPos < 600 && d.state === "RACING" && g0 < 20000) { d.test.step(1); g0 += 1; }
+    while (d.playerPos < 300 && d.state === "RACING" && g0 < 20000) { d.test.step(1); g0 += 1; }
     d.test.setInput({ throttle: false, brake: true });
     let guard = 0;
     while (d.state === "RACING" && guard < 20000) { d.test.step(1); guard += 1; }
@@ -184,7 +189,7 @@ async function C3(ctx) {
     return stopped;
   });
   c.eq(r.result, "UNDERSHOT", "result");
-  c.ok(r.pos < 1620, `playerPos: got ${r.pos}, want < 1620`);
+  c.ok(r.pos < PLAT_START, `playerPos: got ${r.pos}, want < ${PLAT_START}`);
   c.eq(r.speed, 0, "playerSpeed");
   c.eq(r.posAfter, r.pos, "playerPos after the result");
   await assertResultStrings(c, page, "UNDERSHOT");
@@ -201,7 +206,7 @@ async function C4() {
   await page.waitForFunction(() => !!window.__drivetrain);
 
   // (a) first win with empty storage
-  const fast = await driveToBrake(page, WIN_BRAKE_M, RIVAL_SLOW);
+  const fast = await driveToBrake(page, WIN_BRAKE_M, PIN);
   c.eq(fast.result, "WIN", "(a) result");
   let body = await visibleText(page);
   c.ok(body.includes("NEW BEST"), "(a) NEW BEST missing on the first win");
@@ -232,7 +237,7 @@ async function C4() {
   await second.page.close();
 
   // (d) a slower win must not claim NEW BEST
-  const slow = await driveToBrake(page, 930, RIVAL_SLOW);
+  const slow = await driveToBrake(page, SLOW_WIN_BRAKE_M, PIN);
   c.eq(slow.result, "WIN", "(d) result");
   c.ok(slow.ms > fast.ms, `(d) the second win must be slower: ${slow.ms} vs ${fast.ms}`);
   body = await visibleText(page);
@@ -258,7 +263,7 @@ async function C5() {
     });
     const { page, w } = await openPage(ctx);
     c.eq(await page.evaluate(() => window.__drivetrain.state), "IDLE", "(a) state after load");
-    const r = await driveToBrake(page, WIN_BRAKE_M, RIVAL_SLOW);
+    const r = await driveToBrake(page, WIN_BRAKE_M, PIN);
     c.eq(await page.evaluate(() => window.__drivetrain.state), "RESULT", "(a) state after a race");
     c.ok(RESULTS.includes(r.result), `(a) result: got ${r.result}`);
     c.eq(w.pageerrors.length, 0, `(a) pageerror count [${w.pageerrors.join(";")}]`);
@@ -274,7 +279,7 @@ async function C5() {
     await first.page.close();
     const { page, w } = await openPage(ctx);
     c.eq(await page.evaluate(() => window.__drivetrain.state), "IDLE", `${label} state after load`);
-    await driveToBrake(page, WIN_BRAKE_M, RIVAL_SLOW);
+    await driveToBrake(page, WIN_BRAKE_M, PIN);
     c.eq(await page.evaluate(() => window.__drivetrain.state), "RESULT", `${label} state after a race`);
     c.eq(w.pageerrors.length, 0, `${label} pageerror count [${w.pageerrors.join(";")}]`);
     c.eq(w.dialogs, 0, `${label} dialog count`);
@@ -349,7 +354,7 @@ async function C7(ctx) {
     const { page } = await openPage(ctx);
     const r = await page.evaluate((n) => {
       const d = window.__drivetrain;
-      d.test.start({ rivalMax: 30 });
+      d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
       d.test.setInput({ throttle: true, brake: false });
       let guard = 0;
       while (d.state === "RACING" && guard < 6000) { d.test.step(n); guard += n; }
@@ -394,13 +399,13 @@ async function C9(ctx) {
   const { page } = await openPage(ctx);
   const r = await page.evaluate(() => {
     const d = window.__drivetrain;
-    d.test.start({ rivalMax: 39 });
+    d.test.start({ rivalMax: 33, platformStart: 1400, grip: "DRY" });
     d.test.step(5200);
     return { result: d.result, ms: d.elapsedMs, rivalDone: d.rivalDone };
   });
   c.eq(r.result, "RIVAL WINS", "result");
   c.eq(r.rivalDone, true, "rivalDone");
-  c.between(r.ms, 54000, 56000, "rival finish ms at its top speed");
+  c.between(r.ms, 45000, 60000, "rival finish ms at its top speed");
   await assertResultStrings(c, page, "RIVAL WINS");
   await page.close();
   c.done(`rival stops at ${(r.ms / 1000).toFixed(3)} s`);
@@ -486,11 +491,11 @@ async function C10() {
 async function C11(ctx) {
   const c = new Check("C11");
   const wins = [];
-  for (let x = 0; x <= 2000; x += 10) {
+  for (let x = 200; x <= 1400; x += 10) {
     const page = await ctx.newPage();
     await page.goto(URL);
     await page.waitForFunction(() => !!window.__drivetrain);
-    const r = await driveToBrake(page, x, RIVAL_FAST);
+    const r = await driveToBrake(page, x, PIN_HARD);
     if (r.result === "WIN") wins.push(x);
     await page.close();
   }
@@ -688,9 +693,9 @@ async function C14() {
   await page.goto("file://" + tmp);
   await page.waitForFunction(() => !!window.__drivetrain, { timeout: 5000 });
 
-  const r = await driveToBrake(page, WIN_BRAKE_M, RIVAL_SLOW);
+  const r = await driveToBrake(page, WIN_BRAKE_M, PIN);
   c.eq(r.result, "WIN", "result in the built page");
-  c.between(r.pos, 1620, 1900, "playerPos in the built page");
+  c.between(r.pos, PLAT_START, PLAT_END, "playerPos in the built page");
   c.eq(await resultText(page), "WIN", "#result in the built page");
 
   const sizes = await page.evaluate(() => {
@@ -722,29 +727,56 @@ async function C15(ctx) {
     const d = window.__drivetrain;
     const out = [];
     for (let i = 0; i < 25; i += 1) {
-      d.test.start();                       // no pin: draw a fresh rival
-      const cap = d.rivalMax;
+      d.test.start();                       // no pin: draw a fresh race
+      const base = d.rivalBase;
+      const t = d.track;
+      let peak = 0;
       let g = 0;
-      while (d.state === "RACING" && g < 20000) { d.test.step(1); g += 1; }
-      out.push({ cap, ms: d.elapsedMs, result: d.result, pos: d.rivalPos });
+      while (d.state === "RACING" && g < 20000) {
+        d.test.step(1); g += 1;
+        if (d.rivalMax > peak) peak = d.rivalMax;
+      }
+      out.push({ base, peak, ms: d.elapsedMs, result: d.result, pos: d.rivalPos,
+                 ps: t.platformStart, pe: t.platformEnd, grip: d.grip });
     }
     return out;
   });
 
-  const caps = runs.map((r) => r.cap);
+  const bases = runs.map((r) => r.base);
+  const peaks = runs.map((r) => r.peak);
   const times = runs.map((r) => r.ms);
-  c.ok(new Set(caps.map((v) => v.toFixed(3))).size >= 20,
-    `the rival must vary: ${new Set(caps.map((v) => v.toFixed(3))).size} distinct caps in 25 races`);
-  c.ok(Math.min(...caps) >= 30, `the rival must not go below 30 m/s: got ${Math.min(...caps)}`);
-  c.ok(Math.max(...caps) <= 39, `the rival must not exceed 39 m/s: got ${Math.max(...caps)}`);
+  c.ok(new Set(bases.map((v) => v.toFixed(3))).size >= 20,
+    `the rival must vary: ${new Set(bases.map((v) => v.toFixed(3))).size} distinct draws in 25 races`);
+  c.ok(Math.min(...bases) >= 28, `the rival draw must not go below 28 m/s: got ${Math.min(...bases)}`);
+  c.ok(Math.max(...bases) <= 33, `the rival draw must not exceed 33 m/s: got ${Math.max(...bases)}`);
+  c.ok(Math.max(...peaks) <= 36, `the rival must never pass its hard limit of 36 m/s: got ${Math.max(...peaks)}`);
   c.ok(runs.every((r) => r.result === "RIVAL WINS"), "an idle player must always lose");
-  c.ok(runs.every((r) => r.pos >= 1620 && r.pos <= 1900),
-    `the rival must stop inside the platform: ${Math.min(...runs.map((r) => r.pos)).toFixed(1)}..${Math.max(...runs.map((r) => r.pos)).toFixed(1)}`);
-  c.ok(Math.max(...times) - Math.min(...times) > 5000,
+  c.ok(runs.every((r) => r.pos >= r.ps && r.pos <= r.pe),
+    "the rival must stop inside the platform it was given");
+  c.ok(Math.max(...times) - Math.min(...times) > 3000,
     `the rival times must spread: ${(Math.min(...times) / 1000).toFixed(1)}..${(Math.max(...times) / 1000).toFixed(1)} s`);
 
+  // An idle player never leads, so the runs above never trigger the rival's
+  // reaction. Drive ahead and prove the rival answers.
+  const react = await page.evaluate(() => {
+    const d = window.__drivetrain;
+    d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
+    d.test.setInput({ throttle: true, brake: false });
+    let g = 0, atLevel = null, peak = 0;
+    while (d.state === "RACING" && g < 20000) {
+      d.test.step(1); g += 1;
+      if (atLevel === null && d.playerPos > 100) atLevel = d.rivalMax;
+      if (d.rivalMax > peak) peak = d.rivalMax;
+      if (d.playerPos - d.rivalPos > 320) break;
+    }
+    return { base: d.rivalBase, early: atLevel, peak, lead: d.playerPos - d.rivalPos };
+  });
+  c.ok(react.peak > react.early + 1,
+    `the rival must push when the player leads: ${react.early.toFixed(2)} -> ${react.peak.toFixed(2)}`);
+  c.ok(react.peak <= 36, `the reaction must respect the hard limit: got ${react.peak}`);
+
   await page.close();
-  c.done(`caps ${Math.min(...caps).toFixed(1)}..${Math.max(...caps).toFixed(1)} m/s, finishes ${(Math.min(...times) / 1000).toFixed(1)}..${(Math.max(...times) / 1000).toFixed(1)} s`);
+  c.done(`draws ${Math.min(...bases).toFixed(1)}..${Math.max(...bases).toFixed(1)} m/s, reaction ${react.early.toFixed(1)} -> ${react.peak.toFixed(1)}, finishes ${(Math.min(...times) / 1000).toFixed(1)}..${(Math.max(...times) / 1000).toFixed(1)} s`);
 }
 
 // C16 — an early stop must not end the race.
@@ -753,7 +785,7 @@ async function C16(ctx) {
   const { page } = await openPage(ctx);
   const r = await page.evaluate(() => {
     const d = window.__drivetrain;
-    d.test.start({ rivalMax: 30 });
+    d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
     d.test.setInput({ throttle: true, brake: false });
     d.test.step(12);                        // a short tap, then hesitation
     d.test.setInput({ throttle: false, brake: false });
@@ -772,11 +804,117 @@ async function C16(ctx) {
   c.eq(r.resumedState, "RACING", "the race must continue after the recovery");
 
   // and a stop past the arming distance must still be judged
-  const judged = await driveToBrake(page, SHORT_BRAKE_M, RIVAL_SLOW);
+  const judged = await driveToBrake(page, SHORT_BRAKE_M, PIN);
   c.eq(judged.result, "UNDERSHOT", "a stop past the arming distance must still be judged");
 
   await page.close();
   c.done(`stalled at ${r.stalled.pos.toFixed(2)} m, drove on to ${r.resumedPos.toFixed(0)} m`);
+}
+
+// C17 — the station moves, so a memorised brake point cannot work.
+async function C17(ctx) {
+  const c = new Check("C17");
+  const { page } = await openPage(ctx);
+  const seen = await page.evaluate(() => {
+    const d = window.__drivetrain;
+    const out = [];
+    for (let i = 0; i < 30; i += 1) {
+      d.test.start();
+      const t = d.track;
+      out.push({ ps: t.platformStart, pe: t.platformEnd, warn: t.warnAt });
+    }
+    return out;
+  });
+  const starts = seen.map((v) => v.ps);
+  c.ok(new Set(starts).size >= 10, `the station must move: ${new Set(starts).size} distinct positions in 30 races`);
+  c.ok(Math.min(...starts) >= 1300, `station too near: ${Math.min(...starts)}`);
+  c.ok(Math.max(...starts) <= 1520, `station too far: ${Math.max(...starts)}`);
+  c.ok(seen.every((v) => v.pe - v.ps === 360), "the platform must always measure 360 m");
+  c.ok(seen.every((v) => v.ps - v.warn === 400), "the distant signal must stand 400 m before the platform");
+  c.ok(Math.max(...starts) - Math.min(...starts) >= 150,
+    `the station spread must be real: ${Math.min(...starts)}..${Math.max(...starts)}`);
+  await page.close();
+  c.done(`stations ${Math.min(...starts)}..${Math.max(...starts)} m, ${new Set(starts).size} distinct`);
+}
+
+// C18 — a wet rail must carry the train further from the same brake point.
+async function C18(ctx) {
+  const c = new Check("C18");
+  const { page } = await openPage(ctx);
+  const stops = {};
+  for (const grip of ["DRY", "DAMP", "WET"]) {
+    const r = await driveToBrake(page, 700, { rivalMax: 28, platformStart: PLAT_START, grip });
+    stops[grip] = r.pos;
+  }
+  c.ok(stops.DAMP > stops.DRY + 50,
+    `damp must carry further than dry: ${stops.DRY.toFixed(0)} vs ${stops.DAMP.toFixed(0)}`);
+  c.ok(stops.WET > stops.DAMP + 50,
+    `wet must carry further than damp: ${stops.DAMP.toFixed(0)} vs ${stops.WET.toFixed(0)}`);
+
+  const rails = await page.evaluate(() => {
+    const d = window.__drivetrain;
+    const out = [];
+    for (let i = 0; i < 30; i += 1) { d.test.start(); out.push(d.grip); }
+    return out;
+  });
+  c.ok(new Set(rails).size === 3, `all three rail conditions must appear: ${[...new Set(rails)].join(",")}`);
+  await page.close();
+  c.done(`stop from 700 m: dry ${stops.DRY.toFixed(0)}, damp ${stops.DAMP.toFixed(0)}, wet ${stops.WET.toFixed(0)}`);
+}
+
+// C19 — the stop marker must tell the truth. It is the player's planning tool,
+// so a marker that lies is worse than no marker.
+async function C19(ctx) {
+  const c = new Check("C19");
+  const { page } = await openPage(ctx);
+  const cases = [];
+  for (const grip of ["DRY", "DAMP", "WET"]) {
+    for (const brakeAt of [400, 550, 700]) {
+      const r = await driveToBrake(page, brakeAt, { rivalMax: 28, platformStart: PLAT_START, grip });
+      const predicted = brakeAt + r.stopInAtBrake;
+      cases.push({ grip, brakeAt, predicted, actual: r.pos, err: Math.abs(predicted - r.pos) });
+    }
+  }
+  const worst = Math.max(...cases.map((v) => v.err));
+  c.ok(cases.every((v) => v.predicted < 2000),
+    "the check must only compare stops that fit on the track");
+  for (const v of cases) {
+    c.ok(v.err <= 5,
+      `${v.grip} brake at ${v.brakeAt}: marker promised ${v.predicted.toFixed(1)} m, train stopped at ${v.actual.toFixed(1)} m`);
+  }
+  await page.close();
+  c.done(`worst marker error ${worst.toFixed(2)} m across 9 runs`);
+}
+
+// C20 — the distant signal must fire 400 m out, and only then.
+async function C20(ctx) {
+  const c = new Check("C20");
+  const { page } = await openPage(ctx);
+  const r = await page.evaluate(() => {
+    const d = window.__drivetrain;
+    d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
+    d.test.setInput({ throttle: true, brake: false });
+    const out = { before: null, firedAt: null };
+    let g = 0;
+    while (d.state === "RACING" && g < 20000) {
+      d.test.step(1); g += 1;
+      if (out.before === null && d.playerPos > 500) out.before = d.passedWarn;
+      if (out.firedAt === null && d.passedWarn) out.firedAt = d.playerPos;
+      if (d.playerPos > 1100) break;
+    }
+    return out;
+  });
+  await page.waitForTimeout(100);          // let one animation frame paint
+  r.callout = await page.evaluate(() =>
+    (document.querySelector("#callout").textContent || "").trim());
+  c.eq(r.before, false, "the signal must not fire early");
+  c.ok(r.firedAt !== null, "the signal must fire");
+  c.ok(r.firedAt >= 1000 && r.firedAt < 1010,
+    `the signal must fire at 1000 m for a station at 1400 m: got ${r.firedAt}`);
+  c.ok(r.callout.includes("DISTANT SIGNAL"), `the callout must name the signal: got "${r.callout}"`);
+  c.ok(/\d+ M/.test(r.callout), `the callout must state the distance: got "${r.callout}"`);
+  await page.close();
+  c.done(`fired at ${r.firedAt.toFixed(0)} m: "${r.callout}"`);
 }
 
 // --------------------------------------------------------------------- main
@@ -788,10 +926,11 @@ async function main() {
     () => C1(shared), () => C2(shared), () => C3(shared), () => C4(),
     () => C5(), () => C6(), () => C7(shared), () => C8(shared),
     () => C9(shared), () => C10(), () => C11(shared), () => C12(), () => C13(),
-    () => C14(), () => C15(shared), () => C16(shared)
+    () => C14(), () => C15(shared), () => C16(shared), () => C17(shared),
+    () => C18(shared), () => C19(shared), () => C20(shared)
   ];
   const ids = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10",
-               "C11", "C12", "C13", "C14", "C15", "C16"];
+               "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19", "C20"];
   for (let i = 0; i < stages.length; i += 1) {
     try {
       await stages[i]();

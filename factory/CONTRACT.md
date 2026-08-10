@@ -2,10 +2,21 @@
 
 Project: drivetrain
 Date: 2026-08-10
-Revision: 3. Revision 2 was frozen and shipped. The Step 6 inspector found two
-checks that could not fail, and the user then changed the game design: the
-player loses the speed limit, and the rival draws a random top speed.
-Status: DRAFT. The user must sign revision 3.
+Revision: 4. The user found that every race followed one pattern, because the
+player made exactly one decision and the station never moved. Revision 4 makes
+that decision impossible to precompute.
+Status: DRAFT. The user must sign revision 4.
+
+### What changed from revision 3, and why
+
+| Change | Reason |
+|---|---|
+| The station moves for every race | A memorised brake point was the whole game. C17 is new and proves the station varies. |
+| The rail draws a condition | Dry, damp, and wet scale every brake. The same brake point stops in a different place. C18 is new. |
+| The rival reacts to the player | It pushed only on a fixed script before. C15 now proves it answers a lead. |
+| A distant signal warns 400 m out | The user asked for a way to plan. C20 is new. |
+| A live stop marker on the rail | It shows where the train would stop if the driver braked now. C19 is new, and it proves the marker does not lie. |
+| Every check pins the station, the rail, and the rival | Three random draws would otherwise make every check flaky. |
 
 ### What changed from revision 2, and why
 
@@ -266,6 +277,52 @@ Assertions:
 - A second finger lifting does not clear the first finger's hold.
 - A restart while a lever is still held drives the new race. `playerPos` grows.
 
+### C17 — The station moves
+
+Steps: start 30 races with no pin and read `track`.
+
+Assertions:
+
+- At least 10 distinct platform positions appear in 30 races.
+- No platform starts before 1300 m or after 1520 m.
+- The platform always measures 360 m.
+- The distant signal always stands 400 m before the platform.
+- The spread between the nearest and the furthest station is at least 150 m.
+
+### C18 — The rail condition changes the stop
+
+Steps: brake at 700 m on a dry rail, a damp rail, and a wet rail.
+
+Assertions:
+
+- The damp stop lies at least 50 m past the dry stop.
+- The wet stop lies at least 50 m past the damp stop.
+- All three rail conditions appear within 30 unpinned races.
+
+### C19 — The stop marker tells the truth
+
+The marker shows where the train would stop if the driver braked now. It is the
+player's planning tool, so a marker that lies is worse than no marker.
+
+Steps: for each rail condition, and for brake points 400 m, 550 m, and 700 m,
+record the marker reading at the brake and the position where the train stops.
+
+Assertions:
+
+- Every predicted stop lies inside the track, so the check compares real stops.
+- The marker is within 5 m of the true stop in all nine runs.
+
+### C20 — The distant signal warns in time
+
+Steps: race with the station pinned at 1400 m and hold full power.
+
+Assertions:
+
+- The signal has not fired at 500 m.
+- The signal fires at 1000 m, which is 400 m before the platform.
+- The banner names the distant signal.
+- The banner states the remaining distance.
+
 ### C14 — The published file works
 
 Every other check reads `index.html`. The file that ships is
@@ -293,10 +350,13 @@ Steps: run 25 races with no pin and no player input.
 Assertions:
 
 - At least 20 of the 25 races draw a different rival top speed.
-- No rival top speed goes below 30 m/s.
-- No rival top speed goes above 39 m/s.
+- No rival draw goes below 28 m/s.
+- No rival draw goes above 33 m/s.
+- The rival never passes its hard limit of 36 m/s, even when it reacts.
+- When the player pulls a lead, the rival's top speed rises by more than 1 m/s.
+  An idle player never leads, so this needs a driven run.
 - Every race ends in `RIVAL WINS`, because the player never moves.
-- The rival always stops inside the platform zone.
+- The rival always stops inside the platform it was given.
 - The slowest rival and the fastest rival differ by more than 5 s.
 
 ### C16 — An early stop does not end the race
@@ -318,6 +378,6 @@ Assertions:
 
 Revision 2 was signed on 2026-08-10 and covered C1 to C13.
 
-Revision 3 waits for a signature.
+Revision 3 was built and measured but never signed. Revision 4 supersedes it.
 
-- [ ] The user accepts checks C1 to C16 as revision 3.
+- [ ] The user accepts checks C1 to C20 as revision 4.
