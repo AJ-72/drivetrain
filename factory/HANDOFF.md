@@ -97,5 +97,7 @@ In this order:
 
 ## 7. Sign-off
 
-- [ ] The user accepts the task list, the twelve defaults, and the stop
-      conditions.
+- [x] The user accepts the task list, the twelve defaults, and the stop
+      conditions. Signed on 2026-08-10.
+
+The user keeps every halt: T0, T1, T2, T4, and T10.

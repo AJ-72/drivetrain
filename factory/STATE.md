@@ -1,6 +1,6 @@
-STEP: 4 (the work order)
-NEXT_ARTIFACT: factory/HANDOFF.md
-LAST_ACTION: wrote factory/PLAN.md with tasks T0 to T10
-BLOCKED_ON: user signature on the handoff
-TASKS_DONE: 0/11
+STEP: 5 (the night shift)
+NEXT_ARTIFACT: test/contract.mjs
+LAST_ACTION: built the engine at T1 and probed the win band
+BLOCKED_ON: user decision on the stepTrain integration order
+TASKS_DONE: 2/11
 CONSECUTIVE_FAILURES: 0

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Drivetrain</title>
+<style>/* T5 fills this */</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<script>
+"use strict";
+
+const K = {
+  TRACK_LENGTH_M:     2000,
+  PLATFORM_START_M:   1740,
+  PLATFORM_END_M:     1900,
+  THROTTLE_ACCEL:     2.5,
+  BRAKE_DECEL:        2.5,
+  COAST_DECEL:        0.15,
+  MAX_SPEED:          40,
+  STOP_EPSILON:       0.05,
+  RIVAL_BRAKE_M:      1568,
+  FIXED_DT:           1 / 60,
+  MAX_FRAME_DELTA_MS: 50,
+  STEP_MS:            1000 / 60
+};
+
+const S = {
+  state: "IDLE",
+  result: null,
+  playerPos: 0, playerSpeed: 0, playerArmed: false,
+  rivalPos: 0,  rivalSpeed: 0,  rivalArmed: false, rivalDone: false,
+  steps: 0, elapsedMs: 0,
+  bestMs: null, newBest: false,
+  input: { throttle: false, brake: false }
+};
+
+function stepTrain(train, throttle, brake) {
+  let a;
+  if (brake)         a = -K.BRAKE_DECEL;
+  else if (throttle) a =  K.THROTTLE_ACCEL;
+  else               a = -K.COAST_DECEL;
+
+  train.speed += a * K.FIXED_DT;
+  if (train.speed > K.MAX_SPEED) train.speed = K.MAX_SPEED;
+  if (a < 0 && train.speed < K.STOP_EPSILON) train.speed = 0;
+  if (train.speed < 0) train.speed = 0;
+  train.pos += train.speed * K.FIXED_DT;
+}
+
+function finish(result) {
+  S.result = result;
+  S.state = "RESULT";
+  if (result === "WIN") recordBest(S.elapsedMs);
+}
+
+function judge() {
+  if (S.playerPos >= K.TRACK_LENGTH_M) {
+    S.playerPos = K.TRACK_LENGTH_M;
+    S.playerSpeed = 0;
+    finish("OVERSHOT");
+    return true;
+  }
+  if (S.playerArmed && S.playerSpeed === 0) {
+    if (S.playerPos < K.PLATFORM_START_M)      finish("UNDERSHOT");
+    else if (S.playerPos > K.PLATFORM_END_M)   finish("OVERSHOT");
+    else                                        finish("WIN");
+    return true;
+  }
+  return false;
+}
+
+function step() {
+  if (S.state !== "RACING") return;
+
+  S.steps += 1;
+  S.elapsedMs = Math.round(S.steps * K.STEP_MS);
+
+  const p = { pos: S.playerPos, speed: S.playerSpeed };
+  stepTrain(p, S.input.throttle && !S.input.brake, S.input.brake);
+  S.playerPos = p.pos; S.playerSpeed = p.speed;
+  if (S.playerSpeed > 0) S.playerArmed = true;
+
+  if (!S.rivalDone) {
+    const r = { pos: S.rivalPos, speed: S.rivalSpeed };
+    const braking = r.pos >= K.RIVAL_BRAKE_M;
+    stepTrain(r, !braking, braking);
+    S.rivalPos = r.pos; S.rivalSpeed = r.speed;
+    if (S.rivalSpeed > 0) S.rivalArmed = true;
+    if (S.rivalArmed && S.rivalSpeed === 0) S.rivalDone = true;
+  }
+
+  // The player is judged first. A stop on the same step wins.
+  if (judge()) return;
+  if (S.rivalDone) finish("RIVAL WINS");
+}
+
+function startRace() {
+  S.state = "RACING";
+  S.result = null;
+  S.playerPos = 0; S.playerSpeed = 0; S.playerArmed = false;
+  S.rivalPos = 0;  S.rivalSpeed = 0;  S.rivalArmed = false; S.rivalDone = false;
+  S.steps = 0; S.elapsedMs = 0; S.newBest = false;
+  S.input.throttle = false; S.input.brake = false;
+}
+
+function resetRace() {
+  startRace();
+  S.state = "IDLE";
+}
+
+function setInput(next) {
+  if (typeof next.throttle === "boolean") S.input.throttle = next.throttle;
+  if (typeof next.brake === "boolean")    S.input.brake = next.brake;
+}
+
+function recordBest(ms) { /* T7 fills this */ }
+function render() { /* T5 fills this */ }
+
+let manual = false;
+let lastFrameMs = 0;
+let accMs = 0;
+
+function frame(nowMs) {
+  if (!manual) {
+    let delta = lastFrameMs === 0 ? 0 : nowMs - lastFrameMs;
+    lastFrameMs = nowMs;
+    if (delta > K.MAX_FRAME_DELTA_MS) delta = K.MAX_FRAME_DELTA_MS;
+    if (delta < 0) delta = 0;
+    accMs += delta;
+    while (accMs >= K.STEP_MS) { step(); accMs -= K.STEP_MS; }
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+window.__drivetrain = {
+  get state()       { return S.state; },
+  get result()      { return S.result; },
+  get playerPos()   { return S.playerPos; },
+  get playerSpeed() { return S.playerSpeed; },
+  get rivalPos()    { return S.rivalPos; },
+  get rivalDone()   { return S.rivalDone; },
+  get elapsedMs()   { return S.elapsedMs; },
+  get bestMs()      { return S.bestMs; },
+  track: {
+    length:        K.TRACK_LENGTH_M,
+    platformStart: K.PLATFORM_START_M,
+    platformEnd:   K.PLATFORM_END_M
+  },
+  test: {
+    start() { manual = true; startRace(); },
+    setInput(next) { setInput(next); },
+    step(n) { manual = true; for (let i = 0; i < n; i += 1) step(); },
+    reset() { manual = true; resetRace(); }
+  }
+};
+</script>
+</body>
+</html>
