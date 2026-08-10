@@ -5,84 +5,158 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Drivetrain</title>
 <style>
+/* Identity: railway signalling. Steel neutrals carry a green bias. The three
+   accents are the signal lamps themselves, so colour states the rule it obeys:
+   green go, red stop, amber caution at the platform. */
 :root {
-  --bg: #eef1f5;
-  --ink: #16202c;
-  --muted: #5b6b7c;
-  --panel: #ffffff;
-  --edge: #c6d0da;
-  --accent: #d8541f;
+  --bg:    #dfe5e1;
+  --panel: #f3f6f3;
+  --ink:   #101a16;
+  --muted: #56655d;
+  --edge:  #b6c2ba;
+  --ballast: #cbd3cd;
+  --go:    #157f4c;
+  --stop:  #b8322a;
+  --warn:  #b3790c;
+  --lamp:  #fff6d8;
+  --font-data: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sign: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
-:root:not([data-theme="light"]) { }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0e1520;
-    --ink: #e8eef5;
-    --muted: #93a3b5;
-    --panel: #17202d;
-    --edge: #2b394a;
-    --accent: #ff7a3d;
+    --bg:    #0d1412;
+    --panel: #16201c;
+    --ink:   #e4ede7;
+    --muted: #8ca096;
+    --edge:  #2a3a33;
+    --ballast: #1d2823;
+    --go:    #2fb870;
+    --stop:  #e2564b;
+    --warn:  #e8a93b;
+    --lamp:  #fff3cc;
   }
+}
+:root[data-theme="dark"] {
+  --bg:    #0d1412;
+  --panel: #16201c;
+  --ink:   #e4ede7;
+  --muted: #8ca096;
+  --edge:  #2a3a33;
+  --ballast: #1d2823;
+  --go:    #2fb870;
+  --stop:  #e2564b;
+  --warn:  #e8a93b;
+  --lamp:  #fff3cc;
 }
 * { box-sizing: border-box; }
 html, body {
   margin: 0; padding: 0; height: 100%;
   background: var(--bg); color: var(--ink);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-data);
   overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
 }
 #app {
   display: flex; flex-direction: column;
   height: 100%; max-width: 480px; margin: 0 auto;
-  padding: 8px; gap: 8px;
+  padding: 10px; gap: 10px;
 }
+
+/* the instrument strip */
 #hud {
-  display: flex; flex-wrap: wrap; justify-content: space-between;
-  gap: 2px 12px;
-  font-size: 11px; letter-spacing: 0.04em; color: var(--muted);
+  display: grid; grid-template-columns: repeat(4, 1fr);
   background: var(--panel); border: 1px solid var(--edge);
-  border-radius: 8px; padding: 8px 10px;
+  border-radius: 4px; overflow: hidden;
+  font-variant-numeric: tabular-nums;
 }
-#hud b { color: var(--ink); font-weight: 700; }
+#hud .gauge {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 7px 8px; border-left: 1px solid var(--edge);
+  min-width: 0;
+}
+#hud .gauge:first-child { border-left: none; }
+#hud .gauge span {
+  font-family: var(--font-sign);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.11em;
+  color: var(--muted); text-transform: uppercase; white-space: nowrap;
+}
+#hud .gauge b {
+  font-size: 14px; font-weight: 700; color: var(--ink);
+  letter-spacing: -0.01em; white-space: nowrap;
+}
+
 #stage {
   position: relative; flex: 0 0 auto;
-  height: 44vh; min-height: 180px;
+  height: 42vh; min-height: 180px;
 }
 #scene {
   display: block; width: 100%; height: 100%;
-  background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--edge); border-radius: 4px;
 }
 #overlay {
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 4px;
+  align-items: center; justify-content: center; gap: 6px;
   pointer-events: none; text-align: center;
 }
-#result { font-size: 30px; font-weight: 700; letter-spacing: 0.06em; }
-#newbest { font-size: 14px; color: var(--accent); font-weight: 700; }
-#controls { display: flex; gap: 8px; flex: 1 1 auto; }
+/* the result reads as an enamel station sign */
+#result {
+  font-family: var(--font-sign);
+  font-size: clamp(26px, 8vw, 40px); font-weight: 800;
+  letter-spacing: 0.02em; text-wrap: balance;
+  padding: 6px 18px; border-radius: 3px;
+  background: var(--ink); color: var(--panel);
+}
+#result:empty { display: none; }
+#newbest {
+  font-family: var(--font-sign);
+  font-size: 11px; font-weight: 800; letter-spacing: 0.16em;
+  color: var(--warn); text-transform: uppercase;
+}
+
+/* the control desk */
+#controls { display: flex; gap: 10px; flex: 1 1 auto; }
 #controls button {
+  position: relative;
   flex: 1 1 0; min-width: 64px; min-height: 120px;
-  font: inherit; font-size: 16px; font-weight: 700; letter-spacing: 0.08em;
+  font-family: var(--font-sign);
+  font-size: 15px; font-weight: 800; letter-spacing: 0.14em;
   color: var(--ink); background: var(--panel);
-  border: 2px solid var(--edge); border-radius: 12px;
+  border: 1px solid var(--edge); border-radius: 4px;
+  border-bottom-width: 4px;
   touch-action: none; user-select: none; -webkit-user-select: none;
 }
-#controls button.on { border-color: var(--accent); color: var(--accent); }
+/* the lamp on each lever */
+#controls button::before {
+  content: ""; position: absolute; top: 12px; left: 50%;
+  width: 14px; height: 14px; margin-left: -7px; border-radius: 50%;
+  background: var(--edge);
+}
+#brake::before { box-shadow: none; }
+#brake.on { border-color: var(--stop); color: var(--stop); }
+#brake.on::before { background: var(--stop); box-shadow: 0 0 0 4px color-mix(in srgb, var(--stop) 22%, transparent); }
+#throttle.on { border-color: var(--go); color: var(--go); }
+#throttle.on::before { background: var(--go); box-shadow: 0 0 0 4px color-mix(in srgb, var(--go) 22%, transparent); }
+#controls button:focus-visible, #start:focus-visible {
+  outline: 3px solid var(--warn); outline-offset: 2px;
+}
 #start {
-  min-height: 64px; font: inherit; font-size: 16px; font-weight: 700;
-  letter-spacing: 0.08em; color: var(--bg); background: var(--ink);
-  border: none; border-radius: 12px; touch-action: none;
+  min-height: 64px;
+  font-family: var(--font-sign);
+  font-size: 15px; font-weight: 800; letter-spacing: 0.16em;
+  color: var(--panel); background: var(--ink);
+  border: none; border-radius: 4px; touch-action: none;
 }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="hud">
-    <span>BEST <b id="best">--</b></span>
-    <span>TIME <b id="time">0.00s</b></span>
-    <span>SPEED <b id="speed">0</b> km/h</span>
-    <span>PLATFORM <b id="togo">1740 m</b></span>
+    <div class="gauge"><span>Best</span><b id="best">--</b></div>
+    <div class="gauge"><span>Time</span><b id="time">0.00s</b></div>
+    <div class="gauge"><span>km/h</span><b id="speed">0</b></div>
+    <div class="gauge"><span>Platform</span><b id="togo">1740 m</b></div>
   </div>
   <div id="stage">
     <canvas id="scene"></canvas>
@@ -288,7 +362,8 @@ function readPalette() {
   const get = (n) => s.getPropertyValue(n).trim();
   return {
     ink: get("--ink"), muted: get("--muted"), edge: get("--edge"),
-    panel: get("--panel"), accent: get("--accent"), bg: get("--bg")
+    panel: get("--panel"), bg: get("--bg"), ballast: get("--ballast"),
+    go: get("--go"), stop: get("--stop"), warn: get("--warn"), lamp: get("--lamp")
   };
 }
 
@@ -356,8 +431,28 @@ function drawTrain(noseM, y, body, X, scale, tall) {
   g.fill();
 
   // the head lamp
-  g.fillStyle = pal.panel;
+  g.fillStyle = pal.lamp;
   g.fillRect(X(noseM - 1.2), y - tall * 0.62, Math.max(1.5, X(noseM - 0.4) - X(noseM - 1.2)), tall * 0.16);
+}
+
+// A signal stands at the platform start. The lamp states the rule: green while
+// the platform is ahead, amber inside the zone, red beyond it.
+function drawSignal(X, y, tall) {
+  const x = X(K.PLATFORM_START_M) - 14;
+  if (x < -20 || x > cssW + 20) return;
+  const top = y - tall * 3.1;
+  g.strokeStyle = pal.edge;
+  g.lineWidth = 2;
+  g.beginPath(); g.moveTo(x, y); g.lineTo(x, top); g.stroke();
+  g.fillStyle = pal.panel;
+  g.strokeStyle = pal.edge;
+  g.fillRect(x - 5, top - 16, 10, 16);
+  g.strokeRect(x - 5, top - 16, 10, 16);
+  let lamp = pal.go;
+  if (S.playerPos > K.PLATFORM_END_M) lamp = pal.stop;
+  else if (S.playerPos >= K.PLATFORM_START_M) lamp = pal.warn;
+  g.fillStyle = lamp;
+  g.beginPath(); g.arc(x, top - 8, 3.4, 0, Math.PI * 2); g.fill();
 }
 
 function drawStation(X, y, tall) {
@@ -413,28 +508,37 @@ function drawScene() {
   const playerY = H * 0.82;
   const tall = Math.max(11, Math.min(22, H * 0.10));
 
-  // a ground band under each rail, so the scene reads as two lanes
-  g.globalAlpha = 0.5;
-  g.fillStyle = pal.bg;
-  g.fillRect(0, rivalY, W, H * 0.44 - 1);
-  g.globalAlpha = 1;
+  // ballast under each rail, so the scene reads as two lanes of track
+  g.fillStyle = pal.ballast;
+  g.fillRect(0, rivalY, W, Math.max(6, tall * 0.42));
+  g.fillRect(0, playerY, W, Math.max(6, tall * 0.42));
 
   // the platform band, on the player track only
   const px1 = X(K.PLATFORM_START_M);
   const px2 = X(K.PLATFORM_END_M);
   if (px2 > -20 && px1 < W + 20) {
-    g.globalAlpha = 0.16;
-    g.fillStyle = pal.accent;
+    g.globalAlpha = 0.14;
+    g.fillStyle = pal.warn;
     g.fillRect(px1, playerY - tall - 10, px2 - px1, tall + 16);
     g.globalAlpha = 1;
-    g.strokeStyle = pal.accent;
+    // the painted platform edge: an amber stripe with warning hatching
+    g.fillStyle = pal.warn;
+    g.fillRect(px1, playerY - tall - 12, px2 - px1, 3);
+    g.save();
+    g.beginPath(); g.rect(px1, playerY - tall - 12, px2 - px1, 3); g.clip();
+    g.strokeStyle = pal.ink; g.lineWidth = 2;
+    for (let hx = px1 - 6; hx < px2 + 6; hx += 7) {
+      g.beginPath(); g.moveTo(hx, playerY - tall - 12); g.lineTo(hx + 5, playerY - tall - 9); g.stroke();
+    }
+    g.restore();
+    g.strokeStyle = pal.warn;
     g.lineWidth = 2;
     g.beginPath();
-    g.moveTo(px1, playerY - tall - 10); g.lineTo(px1, playerY + 6);
-    g.moveTo(px2, playerY - tall - 10); g.lineTo(px2, playerY + 6);
+    g.moveTo(px1, playerY - tall - 12); g.lineTo(px1, playerY + 6);
+    g.moveTo(px2, playerY - tall - 12); g.lineTo(px2, playerY + 6);
     g.stroke();
-    g.fillStyle = pal.accent;
-    g.font = "700 10px ui-monospace, monospace";
+    g.fillStyle = pal.warn;
+    g.font = "800 9px system-ui, sans-serif";
     g.fillText("PLATFORM", px1 + 8, playerY + 18);
   }
 
@@ -451,6 +555,7 @@ function drawScene() {
   // distance markers every 100 m
   g.fillStyle = pal.muted;
   g.font = "10px ui-monospace, monospace";
+  g.textBaseline = "alphabetic";
   const firstMark = Math.ceil(from / 100) * 100;
   for (let m = firstMark; m <= to; m += 100) {
     if (m < 0 || m > K.TRACK_LENGTH_M) continue;
@@ -461,15 +566,16 @@ function drawScene() {
     g.fillText(label, lx, H - 4);
   }
 
+  g.font = "800 9px system-ui, sans-serif";
   g.fillStyle = pal.muted;
-  g.font = "700 10px ui-monospace, monospace";
   g.fillText("RIVAL", 6, rivalY - tall - 8);
-  g.fillStyle = pal.accent;
-  g.fillText("YOU", 6, playerY - tall - 26);
+  g.fillStyle = pal.go;
+  g.fillText("YOU", 6, playerY - tall - 30);
 
   drawStation(X, playerY, tall);
+  drawSignal(X, playerY, tall);
   drawTrain(S.rivalPos, rivalY, pal.muted, X, scale, tall);
-  drawTrain(S.playerPos, playerY, pal.accent, X, scale, tall);
+  drawTrain(S.playerPos, playerY, pal.go, X, scale, tall);
 }
 
 window.addEventListener("resize", () => { cssW = 0; drawScene(); });
