@@ -4,7 +4,7 @@ Project: drivetrain
 Date: 2026-08-10
 Revision: 2. A fresh-context reviewer returned NOT SIGNABLE on revision 1. This
 revision applies every blocker fix and every major fix.
-Status: DRAFT. The user must sign this file.
+Status: FROZEN. The user signed this file on 2026-08-10.
 
 ## The freeze rule
 
@@ -218,6 +218,8 @@ Assertions:
 
 ## Sign-off
 
-The user signs here. I do not start Step 3 before the signature.
+The user signed on 2026-08-10.
 
-- [ ] The user accepts checks C1 to C13.
+- [x] The user accepts checks C1 to C13.
+
+This file is now frozen. No later step edits it.

@@ -1,6 +1,6 @@
-STEP: 2 (the acceptance contract)
-NEXT_ARTIFACT: factory/PLAN.md
-LAST_ACTION: applied the fresh-context review and wrote CONTRACT.md revision 2
-BLOCKED_ON: user sign-off on checks C1 to C13
-TASKS_DONE: 0/0
+STEP: 4 (the work order)
+NEXT_ARTIFACT: factory/HANDOFF.md
+LAST_ACTION: wrote factory/PLAN.md with tasks T0 to T10
+BLOCKED_ON: user signature on the handoff
+TASKS_DONE: 0/11
 CONSECUTIVE_FAILURES: 0
