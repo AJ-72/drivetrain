@@ -31,10 +31,16 @@ const style = (() => {
   return src.slice(a, b + "</style>".length);
 })();
 
-const bodyOpen = src.indexOf(">", src.indexOf("<body")) + 1;
+const bodyTag = src.indexOf("<body");
+if (bodyTag === -1) throw new Error("index.html has no <body> tag");
+const bodyOpen = src.indexOf(">", bodyTag);
+if (bodyOpen === -1) throw new Error("index.html has an unclosed <body> tag");
 const bodyEnd = src.indexOf("</body>");
-if (bodyOpen === 0 || bodyEnd === -1) throw new Error("index.html has no <body> block");
-const body = src.slice(bodyOpen, bodyEnd).trim();
+if (bodyEnd === -1 || bodyEnd < bodyOpen) throw new Error("index.html has no </body> tag");
+const body = src.slice(bodyOpen + 1, bodyEnd).trim();
+if (src.indexOf("<style>", src.indexOf("</style>")) !== -1) {
+  throw new Error("index.html has more than one <style> block; the build keeps only the first");
+}
 
 const title = section("<title>", "</title>", "<title>").trim();
 

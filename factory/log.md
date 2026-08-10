@@ -235,3 +235,36 @@ applies the CSS, and throws no error.
   a control.
 
 - Next: Step 6, the Inspector. The artifact is `factory/REVIEW.md`.
+
+## Cycle 7 — Step 6, the Inspector
+
+- A fresh context reviewed the running artifact. Verdict: DO NOT SHIP.
+- Two blockers. Both were checks that could not fail. The inspector proved each
+  one by breaking the build and watching the suite stay green.
+- Seven code defects, four of them MAJOR.
+- Fixed: the input source sets, the key scoping, the stored value validation,
+  the honest save label, the setInput guard, the palette fallbacks, the canvas
+  zero size, and the build script guards.
+- Strengthened: C6, C7, C10, C12, C13. Added C14 for the published file.
+- Contract: 14/14 pass.
+- Proof that the checks now bite:
+  - Brake unbound      -> FAIL C6
+  - Frame clamp removed -> FAIL C12
+  - Input blanked on a new race -> FAIL C13
+  Each broken build fails only the check that targets it.
+
+### SURPRISING — the published file had no check at all
+
+Every check read `index.html`. The file that ships is `dist/artifact.html`,
+built by a transform that nothing exercised. C14 now covers it.
+
+### OPEN — one finding needs a contract edit
+
+The judge fires the first time the train stops, anywhere. A player who taps
+THROTTLE and hesitates gets UNDERSHOT at 0.87 m after 3.2 s.
+
+The fix arms the judge on distance. I measured that the fix works and that it
+breaks frozen check C3, which expects UNDERSHOT from a stop at 2.5 m.
+
+- Halt reason: stop condition 4. The fix requires an edit to `CONTRACT.md`.
+- State: BLOCKED. I wait for the user.

@@ -188,7 +188,7 @@ const S = {
   playerPos: 0, playerSpeed: 0, playerArmed: false,
   rivalPos: 0,  rivalSpeed: 0,  rivalArmed: false, rivalDone: false,
   steps: 0, elapsedMs: 0,
-  bestMs: null, newBest: false,
+  bestMs: null, newBest: false, bestSaved: true,
   input: { throttle: false, brake: false }
 };
 
@@ -261,8 +261,10 @@ function startRace() {
   S.result = null;
   S.playerPos = 0; S.playerSpeed = 0; S.playerArmed = false;
   S.rivalPos = 0;  S.rivalSpeed = 0;  S.rivalArmed = false; S.rivalDone = false;
-  S.steps = 0; S.elapsedMs = 0; S.newBest = false;
-  S.input.throttle = false; S.input.brake = false;
+  S.steps = 0; S.elapsedMs = 0; S.newBest = false; S.bestSaved = true;
+  // Do not blank the input. A lever that the player still holds must stay
+  // engaged into the new race. applyHeld() reads the live held sets.
+  applyHeld();
 }
 
 function resetRace() {
@@ -271,6 +273,7 @@ function resetRace() {
 }
 
 function setInput(next) {
+  if (!next || typeof next !== "object") return;
   if (typeof next.throttle === "boolean") S.input.throttle = next.throttle;
   if (typeof next.brake === "boolean")    S.input.brake = next.brake;
 }
@@ -280,25 +283,36 @@ function setInput(next) {
 
 const BEST_KEY = "drivetrain.bestMs";
 
+// A stored value must survive Number() coercion tricks. "1e5", " 12 ", and
+// "0x10" all coerce to a number, and a best of 12 ms can never be beaten.
+const BEST_MIN_MS = 1000;
+const BEST_MAX_MS = 3600000;
+
 function readBest() {
   try {
     const raw = window.localStorage.getItem(BEST_KEY);
-    if (raw === null) return null;
-    const n = Number(raw);
-    if (!Number.isInteger(n) || n <= 0) return null;
+    if (typeof raw !== "string") return null;
+    const text = raw.trim();
+    if (!/^\d{1,12}$/.test(text)) return null;
+    const n = Number(text);
+    if (!Number.isInteger(n)) return null;
+    if (n < BEST_MIN_MS || n > BEST_MAX_MS) return null;
     return n;
   } catch (e) { return null; }
 }
 
 function writeBest(ms) {
-  try { window.localStorage.setItem(BEST_KEY, String(ms)); } catch (e) { }
+  try {
+    window.localStorage.setItem(BEST_KEY, String(ms));
+    return true;
+  } catch (e) { return false; }
 }
 
 function recordBest(ms) {
   if (S.bestMs === null || ms < S.bestMs) {
     S.bestMs = ms;
     S.newBest = true;
-    writeBest(ms);
+    S.bestSaved = writeBest(ms);   // the screen must not claim a save that failed
   }
 }
 
@@ -330,7 +344,9 @@ function render() {
   setText(el.time, secs(S.elapsedMs));
   setText(el.best, S.bestMs === null ? "--" : secs(S.bestMs));
   setText(el.result, S.state === "RESULT" ? S.result : "");
-  setText(el.newbest, S.state === "RESULT" && S.newBest ? "NEW BEST" : "");
+  setText(el.newbest, S.state === "RESULT" && S.newBest
+    ? (S.bestSaved ? "NEW BEST" : "NEW BEST (NOT SAVED)")
+    : "");
   setText(el.start, S.state === "RACING" ? "RESTART" : "START");
   setText(el.speed, String(Math.round(S.playerSpeed * 3.6)));
   const gap = K.PLATFORM_START_M - S.playerPos;
@@ -351,12 +367,23 @@ const g = el.scene ? el.scene.getContext("2d") : null;
 let cssW = 0, cssH = 0, dpr = 0, pal = null;
 
 function readPalette() {
+  // A host that scopes custom properties differently returns "". A canvas
+  // ignores an empty fillStyle and keeps the previous colour, so the scene
+  // would render black on black with nothing logged. Every token has a hex
+  // fallback for that reason.
   const s = getComputedStyle(document.documentElement);
-  const get = (n) => s.getPropertyValue(n).trim();
+  const get = (n, fb) => s.getPropertyValue(n).trim() || fb;
   return {
-    ink: get("--ink"), muted: get("--muted"), edge: get("--edge"),
-    panel: get("--panel"), bg: get("--bg"), ballast: get("--ballast"),
-    go: get("--go"), stop: get("--stop"), warn: get("--warn"), lamp: get("--lamp")
+    ink:     get("--ink", "#101a16"),
+    muted:   get("--muted", "#56655d"),
+    edge:    get("--edge", "#b6c2ba"),
+    panel:   get("--panel", "#f3f6f3"),
+    bg:      get("--bg", "#dfe5e1"),
+    ballast: get("--ballast", "#cbd3cd"),
+    go:      get("--go", "#157f4c"),
+    stop:    get("--stop", "#b8322a"),
+    warn:    get("--warn", "#b3790c"),
+    lamp:    get("--lamp", "#fff6d8")
   };
 }
 
@@ -364,6 +391,7 @@ function sizeCanvas() {
   const w = el.scene.clientWidth;
   const h = el.scene.clientHeight;
   const d = window.devicePixelRatio || 1;
+  if (w === 0 || h === 0) { cssW = 0; cssH = 0; return; }   // never cache zero
   if (w === cssW && h === cssH && d === dpr) return;
   cssW = w; cssH = h; dpr = d;
   el.scene.width = Math.max(1, Math.round(w * d));
@@ -584,17 +612,38 @@ function uiStart() {
   render();
 }
 
+// Each control tracks WHICH sources hold it, not merely that something does.
+// A single shared boolean lets one source's release clear another source's
+// hold: a second finger lifting would drop the first finger's throttle, and a
+// key release would drop a touch hold.
+const held = { throttle: new Set(), brake: new Set() };
+
+function applyHeld() {
+  setInput({ throttle: held.throttle.size > 0, brake: held.brake.size > 0 });
+}
+
+function press(name, token) { held[name].add(token); applyHeld(); }
+function release(name, token) { held[name].delete(token); applyHeld(); }
+
+function releaseAllPointers(name) {
+  for (const token of Array.from(held[name])) {
+    if (token.slice(0, 4) === "ptr:") held[name].delete(token);
+  }
+  applyHeld();
+}
+
 function bindControl(node, name) {
   if (!node) return;
-  const on  = (e) => { if (e.cancelable) e.preventDefault(); setInput({ [name]: true }); };
-  const off = () => setInput({ [name]: false });
-  node.addEventListener("pointerdown", on);
-  node.addEventListener("pointerup", off);
-  node.addEventListener("pointercancel", off);
-  node.addEventListener("pointerleave", off);
-  node.addEventListener("lostpointercapture", off);
-  node.addEventListener("touchcancel", off);
-  node.addEventListener("touchend", off);
+  node.addEventListener("pointerdown", (e) => {
+    if (e.cancelable) e.preventDefault();
+    press(name, "ptr:" + e.pointerId);
+  });
+  for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+    node.addEventListener(type, (e) => release(name, "ptr:" + e.pointerId));
+  }
+  // A touch event carries no pointerId. Drop every pointer hold on this lever.
+  node.addEventListener("touchcancel", () => releaseAllPointers(name));
+  node.addEventListener("touchend", () => releaseAllPointers(name));
 }
 
 bindControl(el.throttle, "throttle");
@@ -612,19 +661,32 @@ const KEY_MAP = {
   ArrowDown: "brake",  s: "brake",    S: "brake"
 };
 
+// The game must never swallow a key that belongs to a text field. The page can
+// be embedded beside other controls, and taking the space bar there would both
+// lose the character and destroy a race in progress.
+function isTextTarget(node) {
+  if (!node || typeof node.closest !== "function") return false;
+  return !!node.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']");
+}
+
 window.addEventListener("keydown", (e) => {
+  if (isTextTarget(e.target)) return;
   if (e.code === "Space") { e.preventDefault(); uiStart(); return; }
   const name = KEY_MAP[e.key];
-  if (name) { e.preventDefault(); setInput({ [name]: true }); }
+  if (name) { e.preventDefault(); press(name, "key"); }
 });
 
 window.addEventListener("keyup", (e) => {
   const name = KEY_MAP[e.key];
-  if (name) setInput({ [name]: false });
+  if (name) release(name, "key");
 });
 
 // A lost window must never leave a control held.
-window.addEventListener("blur", () => setInput({ throttle: false, brake: false }));
+window.addEventListener("blur", () => {
+  held.throttle.clear();
+  held.brake.clear();
+  applyHeld();
+});
 
 let manual = false;
 let lastFrameMs = 0;

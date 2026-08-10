@@ -304,31 +304,57 @@ async function C6() {
   await page.waitForTimeout(60);
   c.eq(await page.evaluate(() => window.__drivetrain.state), "RACING", "state after a touch on START");
 
-  await hold(page, "#throttle", 500);
+  // Build a speed, then measure the coast decay and the brake decay over the
+  // same period. Comparing the brake against the earlier speed is not enough:
+  // releasing the throttle always lowers the speed, so such a check passes even
+  // when the BRAKE control is entirely unbound.
+  await hold(page, "#throttle", 2000);
   const afterThrottle = await page.evaluate(() => window.__drivetrain.playerSpeed);
-  c.ok(afterThrottle > 0, `speed after a throttle touch: got ${afterThrottle}, want > 0`);
+  c.ok(afterThrottle > 1, `speed after a throttle touch: got ${afterThrottle}, want > 1`);
 
+  const coastFrom = await page.evaluate(() => window.__drivetrain.playerSpeed);
+  await page.waitForTimeout(500);
+  const coastTo = await page.evaluate(() => window.__drivetrain.playerSpeed);
+  const coastDrop = coastFrom - coastTo;
+
+  const brakeFrom = await page.evaluate(() => window.__drivetrain.playerSpeed);
   await hold(page, "#brake", 500);
-  const afterBrake = await page.evaluate(() => window.__drivetrain.playerSpeed);
-  c.ok(afterBrake < afterThrottle, `speed after a brake touch: got ${afterBrake}, want < ${afterThrottle}`);
+  const brakeTo = await page.evaluate(() => window.__drivetrain.playerSpeed);
+  const brakeDrop = brakeFrom - brakeTo;
+
+  c.ok(brakeDrop >= coastDrop * 5,
+    `the brake must beat coasting: brake dropped ${brakeDrop.toFixed(3)}, coasting dropped ${coastDrop.toFixed(3)}`);
 
   const scrollW = await page.evaluate(() => document.documentElement.scrollWidth);
   c.ok(scrollW <= 390, `scrollWidth: got ${scrollW}, want <= 390`);
 
   await ctx.close();
-  c.done(`speed ${afterThrottle.toFixed(2)} then ${afterBrake.toFixed(2)}`);
+  c.done(`brake ${brakeDrop.toFixed(3)} vs coast ${coastDrop.toFixed(3)} m/s per 500 ms`);
 }
 
 async function C7(ctx) {
   const c = new Check("C7");
-  const seen = [];
-  for (let i = 0; i < 3; i += 1) {
-    const { page, r } = await fullPowerRun(ctx);
-    seen.push(r.result);
+  // Three runs of one deterministic path prove nothing. Drive the same race
+  // through three different step granularities instead, so the check also
+  // proves the result does not depend on how the clock is advanced.
+  const runs = [];
+  for (const chunk of [1, 60, 6000]) {
+    const { page } = await openPage(ctx);
+    const r = await page.evaluate((n) => {
+      const d = window.__drivetrain;
+      d.test.start();
+      d.test.setInput({ throttle: true, brake: false });
+      let guard = 0;
+      while (d.state === "RACING" && guard < 6000) { d.test.step(n); guard += n; }
+      return { result: d.result, pos: d.playerPos, ms: d.elapsedMs };
+    }, chunk);
+    runs.push({ chunk, ...r });
     await page.close();
   }
-  c.ok(seen.every((r) => r === "OVERSHOT"), `runs: ${seen.join(", ")}`);
-  c.done(seen.join(", "));
+  c.ok(runs.every((r) => r.result === "OVERSHOT"), `results: ${runs.map((r) => r.result).join(", ")}`);
+  c.eq(new Set(runs.map((r) => r.pos)).size, 1, `stop position across granularities: ${runs.map((r) => r.pos).join(", ")}`);
+  c.eq(new Set(runs.map((r) => r.ms)).size, 1, `elapsed ms across granularities: ${runs.map((r) => r.ms).join(", ")}`);
+  c.done(`OVERSHOT at ${runs[0].pos.toFixed(1)} m for step sizes 1, 60, 6000`);
 }
 
 async function C8(ctx) {
@@ -411,6 +437,27 @@ async function C10() {
 
   c.eq(await page.evaluate(() => window.onerror), null, "window.onerror must stay null");
 
+  // The game must not steal keys from a text field beside it. Taking the space
+  // bar there both loses the character and destroys a race in progress.
+  await page.evaluate(() => {
+    const input = document.createElement("input");
+    input.id = "hostfield";
+    input.type = "text";
+    document.body.appendChild(input);
+    input.focus();
+  });
+  await page.evaluate(() => { window.__drivetrain.test.start(); window.__drivetrain.test.step(600); });
+  const posBeforeTyping = await page.evaluate(() => window.__drivetrain.playerPos);
+  await page.keyboard.type("go up ws");
+  const typed = await page.evaluate(() => document.querySelector("#hostfield").value);
+  const stateAfterTyping = await page.evaluate(() => ({
+    state: window.__drivetrain.state, pos: window.__drivetrain.playerPos
+  }));
+  c.eq(typed, "go up ws", "a focused text field must receive every character");
+  c.eq(stateAfterTyping.state, "RACING", "typing must not end the race");
+  c.eq(stateAfterTyping.pos, posBeforeTyping, "typing must not move the train");
+  await page.evaluate(() => { document.querySelector("#hostfield").remove(); });
+
   const end = await page.evaluate(() => {
     const d = window.__drivetrain;
     d.test.start();
@@ -453,6 +500,15 @@ async function C11(ctx) {
 async function C12() {
   const c = new Check("C12");
   const ctx = await freshContext();
+  // A dispatched visibilitychange event does not suspend rAF, so a check built
+  // on it can never fail. Attack the real mechanism instead: hand the page one
+  // animation frame whose timestamp jumped 30 s, exactly as a returning tab
+  // does, and require the frame delta clamp to absorb it.
+  await ctx.addInitScript(() => {
+    window.__gapMs = 0;
+    const raw = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (cb) => raw((t) => cb(t + window.__gapMs));
+  });
   const page = await ctx.newPage();
   const w = watch(page);
   await page.goto(URL);
@@ -463,28 +519,28 @@ async function C12() {
     return [r.x + r.width / 2, r.y + r.height / 2];
   })));
   await hold(page, "#throttle", 6000);
-  const before = await page.evaluate(() => ({ pos: window.__drivetrain.playerPos, speed: window.__drivetrain.playerSpeed }));
-  c.ok(before.speed > 10, `speed before hiding: got ${before.speed}, want > 10`);
+  const before = await page.evaluate(() => ({
+    pos: window.__drivetrain.playerPos, speed: window.__drivetrain.playerSpeed
+  }));
+  c.ok(before.speed > 10, `speed before the gap: got ${before.speed}, want > 10`);
 
-  await page.evaluate(() => {
-    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  await page.waitForTimeout(2000);
-  await page.evaluate(() => {
-    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  await page.waitForTimeout(60);
+  const GAP_S = 30;
+  await page.evaluate((g) => { window.__gapMs = g * 1000; }, GAP_S);
+  await page.waitForTimeout(250);
 
-  const after = await page.evaluate(() => ({ pos: window.__drivetrain.playerPos, state: window.__drivetrain.state }));
+  const after = await page.evaluate(() => ({
+    pos: window.__drivetrain.playerPos, state: window.__drivetrain.state
+  }));
   const advance = after.pos - before.pos;
-  c.ok(advance < before.speed * 2 + 5, `advance while hidden: got ${advance.toFixed(1)} m, want < ${(before.speed * 2 + 5).toFixed(1)} m`);
-  c.eq(after.state, "RACING", "state after returning");
+  const bound = before.speed * 0.5 + 2;           // 250 ms of real time, plus one clamped frame
+  const unclamped = before.speed * GAP_S;         // what a missing clamp would give
+  c.ok(advance <= bound,
+    `advance across a ${GAP_S} s frame gap: got ${advance.toFixed(1)} m, want <= ${bound.toFixed(1)} m (no clamp would give about ${unclamped.toFixed(0)} m)`);
+  c.eq(after.state, "RACING", "state after the gap");
   c.eq(w.pageerrors.length, 0, `pageerror count [${w.pageerrors.join(";")}]`);
 
   await ctx.close();
-  c.done(`advance ${advance.toFixed(1)} m`);
+  c.done(`advance ${advance.toFixed(1)} m across a ${GAP_S} s frame gap`);
 }
 
 async function C13() {
@@ -546,8 +602,109 @@ async function C13() {
   const s4 = await page.evaluate(() => window.__drivetrain.playerSpeed);
   c.ok(s4 <= s3, `speed must not rise after pointerleave: ${s3} -> ${s4}`);
 
+  // Two input sources must not clear each other. A shared boolean lets a key
+  // release drop a finger's hold, and a second finger's lift drop the first's.
+  const down = (id, sel) => page.dispatchEvent(sel, "pointerdown",
+    { pointerType: "touch", pointerId: id, isPrimary: id === 1, button: 0, buttons: 1 });
+  const up = (id, sel) => page.dispatchEvent(sel, "pointerup",
+    { pointerType: "touch", pointerId: id, isPrimary: id === 1, button: 0, buttons: 0 });
+
+  // the sub-checks above leave the game in an unknown state; force IDLE first
+  for (let i = 0; i < 4; i += 1) {
+    if (await page.evaluate(() => window.__drivetrain.state) === "IDLE") break;
+    await tap("#start");
+  }
+  c.eq(await page.evaluate(() => window.__drivetrain.state), "IDLE", "state before the two-source checks");
+
+  await tap("#start");
+  await down(1, "#throttle");
+  await page.waitForTimeout(300);
+  await page.keyboard.down("w");
+  await page.keyboard.up("w");
+  await page.waitForTimeout(400);
+  const keyCase = await page.evaluate(() => window.__drivetrain.playerSpeed);
+  await page.waitForTimeout(400);
+  const keyCase2 = await page.evaluate(() => window.__drivetrain.playerSpeed);
+  c.ok(keyCase2 > keyCase, `a key release must not drop a finger hold: ${keyCase} -> ${keyCase2}`);
+
+  await down(2, "#throttle");
+  await page.waitForTimeout(200);
+  await up(2, "#throttle");
+  await page.waitForTimeout(400);
+  const twoFinger = await page.evaluate(() => window.__drivetrain.playerSpeed);
+  await page.waitForTimeout(400);
+  const twoFinger2 = await page.evaluate(() => window.__drivetrain.playerSpeed);
+  c.ok(twoFinger2 > twoFinger, `a second finger lifting must not drop the first: ${twoFinger} -> ${twoFinger2}`);
+
+  // a restart with the thumb still on the lever must not leave the train dead
+  await tap("#start");
+  await tap("#start");
+  await page.waitForTimeout(600);
+  const afterHeldRestart = await page.evaluate(() => ({
+    state: window.__drivetrain.state, pos: window.__drivetrain.playerPos
+  }));
+  c.eq(afterHeldRestart.state, "RACING", "state after a restart with the lever held");
+  c.ok(afterHeldRestart.pos > 0,
+    `a held lever must drive the new race: playerPos ${afterHeldRestart.pos}`);
+  await up(1, "#throttle");
+
   await ctx.close();
-  c.done("restart, result restart, touchcancel, pointerleave");
+  c.done("restart, result restart, touchcancel, pointerleave, two sources, held restart");
+}
+
+// C14 guards the file that actually ships. Every other check reads
+// index.html, but the published page is dist/artifact.html, produced by a
+// transform that no check exercised.
+async function C14() {
+  const c = new Check("C14");
+  const { execFileSync } = await import("child_process");
+  const os = await import("os");
+
+  execFileSync(process.execPath, [path.join(ROOT, "tools", "make-artifact.mjs")], { cwd: ROOT });
+  const built = fs.readFileSync(path.join(ROOT, "dist", "artifact.html"), "utf8");
+
+  for (const tag of ["<!doctype", "<html", "<head", "<body"]) {
+    c.ok(!built.toLowerCase().includes(tag), `the built file still carries ${tag}`);
+  }
+  c.ok(built.includes("__drivetrain"), "the built file lost the game script");
+
+  // wrap it the way the Artifact host wraps it
+  const wrapped = `<!doctype html><html lang="en"><head><meta charset="utf-8">`
+    + `<meta name="viewport" content="width=device-width,initial-scale=1"></head><body>`
+    + built + `</body></html>`;
+  const tmp = path.join(os.tmpdir(), "drivetrain-artifact-check.html");
+  fs.writeFileSync(tmp, wrapped, "utf8");
+
+  const ctx = await freshContext();
+  const page = await ctx.newPage();
+  const w = watch(page);
+  await page.goto("file://" + tmp);
+  await page.waitForFunction(() => !!window.__drivetrain, { timeout: 5000 });
+
+  const r = await driveToBrake(page, 1420);
+  c.eq(r.result, "WIN", "result in the built page");
+  c.between(r.pos, 1740, 1900, "playerPos in the built page");
+  c.eq(await resultText(page), "WIN", "#result in the built page");
+
+  const sizes = await page.evaluate(() => {
+    const out = {};
+    for (const id of ["throttle", "brake", "start"]) {
+      const el = document.querySelector("#" + id);
+      const b = el ? el.getBoundingClientRect() : null;
+      out[id] = b ? { w: b.width, h: b.height } : null;
+    }
+    out.scrollWidth = document.documentElement.scrollWidth;
+    return out;
+  });
+  for (const id of ["throttle", "brake"]) {
+    c.ok(sizes[id] && sizes[id].w >= 64 && sizes[id].h >= 64,
+      `${id} in the built page: ${JSON.stringify(sizes[id])}`);
+  }
+  c.ok(sizes.scrollWidth <= 390, `scrollWidth in the built page: ${sizes.scrollWidth}`);
+  c.eq(w.pageerrors.length, 0, `pageerror count [${w.pageerrors.join(";")}]`);
+
+  await ctx.close();
+  c.done(`built page wins at ${(r.ms / 1000).toFixed(2)} s`);
 }
 
 // --------------------------------------------------------------------- main
@@ -558,9 +715,10 @@ async function main() {
   const stages = [
     () => C1(shared), () => C2(shared), () => C3(shared), () => C4(),
     () => C5(), () => C6(), () => C7(shared), () => C8(shared),
-    () => C9(shared), () => C10(), () => C11(shared), () => C12(), () => C13()
+    () => C9(shared), () => C10(), () => C11(shared), () => C12(), () => C13(),
+    () => C14()
   ];
-  const ids = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13"];
+  const ids = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "C14"];
   for (let i = 0; i < stages.length; i += 1) {
     try {
       await stages[i]();
