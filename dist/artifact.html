@@ -59,17 +59,20 @@ html, body {
 
 /* the instrument strip */
 #hud {
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(3, 1fr);
   background: var(--panel); border: 1px solid var(--edge);
   border-radius: 4px; overflow: hidden;
   font-variant-numeric: tabular-nums;
 }
 #hud .gauge {
   display: flex; flex-direction: column; gap: 2px;
-  padding: 7px 8px; border-left: 1px solid var(--edge);
+  padding: 6px 8px; border-left: 1px solid var(--edge);
   min-width: 0;
 }
-#hud .gauge:first-child { border-left: none; }
+#hud .gauge:nth-child(3n + 1) { border-left: none; }
+#hud .gauge:nth-child(n + 4) { border-top: 1px solid var(--edge); }
+#gap.ahead { color: var(--go); }
+#gap.behind { color: var(--stop); }
 #hud .gauge span {
   font-family: var(--font-sign);
   font-size: 9px; font-weight: 700; letter-spacing: 0.11em;
@@ -148,8 +151,10 @@ html, body {
   <div id="hud">
     <div class="gauge"><span>Best</span><b id="best">--</b></div>
     <div class="gauge"><span>Time</span><b id="time">0.00s</b></div>
-    <div class="gauge"><span>km/h</span><b id="speed">0</b></div>
     <div class="gauge"><span>Platform</span><b id="togo">1620 m</b></div>
+    <div class="gauge"><span>You km/h</span><b id="speed">0</b></div>
+    <div class="gauge"><span>Rival km/h</span><b id="rspeed">0</b></div>
+    <div class="gauge"><span>Gap</span><b id="gap">0 m</b></div>
   </div>
   <div id="stage">
     <canvas id="scene"></canvas>
@@ -353,6 +358,8 @@ const el = {
   brake:   document.getElementById("brake"),
   throttle: document.getElementById("throttle"),
   speed:   document.getElementById("speed"),
+  rspeed:  document.getElementById("rspeed"),
+  gap:     document.getElementById("gap"),
   togo:    document.getElementById("togo"),
   scene:   document.getElementById("scene")
 };
@@ -372,8 +379,15 @@ function render() {
     : "");
   setText(el.start, S.state === "RACING" ? "RESTART" : "START");
   setText(el.speed, String(Math.round(S.playerSpeed * 3.6)));
-  const gap = K.PLATFORM_START_M - S.playerPos;
-  setText(el.togo, (gap > 0 ? Math.round(gap) : 0) + " m");
+  setText(el.rspeed, String(Math.round(S.rivalSpeed * 3.6)));
+  const toPlatform = K.PLATFORM_START_M - S.playerPos;
+  setText(el.togo, (toPlatform > 0 ? Math.round(toPlatform) : 0) + " m");
+  const lead = S.playerPos - S.rivalPos;
+  setText(el.gap, (lead >= 0 ? "+" : "") + Math.round(lead) + " m");
+  if (el.gap) {
+    el.gap.classList.toggle("ahead", lead > 0);
+    el.gap.classList.toggle("behind", lead < 0);
+  }
   if (el.throttle) el.throttle.classList.toggle("on", S.input.throttle);
   if (el.brake) el.brake.classList.toggle("on", S.input.brake);
   drawScene();
@@ -738,6 +752,7 @@ window.__drivetrain = {
   get rivalPos()    { return S.rivalPos; },
   get rivalDone()   { return S.rivalDone; },
   get rivalMax()    { return S.rivalMax; },
+  get rivalSpeed()  { return S.rivalSpeed; },
   get elapsedMs()   { return S.elapsedMs; },
   get bestMs()      { return S.bestMs; },
   track: {
