@@ -99,3 +99,45 @@ This log holds each choice, the rejected options, and the known cost.
   `PLATFORM_START_M` down and record the change here.
 - Reason: a weaker builder model invents numbers when the plan omits them.
 - Step: 2.
+
+## D10 — The Step 6 inspector rejected the shipped build
+
+- Verdict: DO NOT SHIP. Two blockers, five majors, five minors.
+- Both blockers were checks that could not fail. The inspector proved each one
+  by breaking the build and watching the suite print 13/13.
+- Cost: the suite grew from 13 checks to 16, and three checks were rewritten.
+- Class of gap: an absence again, as in D4 and D8. A check that exists but
+  asserts nothing looks exactly like a check that works.
+- Technique to keep: break the build on purpose and watch the suite. It is the
+  only way to find a check that cannot fail.
+- Step: 6.
+
+## D11 — The player loses the speed limit, the rival gains a random one
+
+- Chosen: the player has no top speed. The rival draws a top speed between
+  30 and 39 m/s for each race, and accelerates at 4.0 against the player's 2.5.
+- Rejected: the rival as a plain countdown. A cap on the player set above the
+  rival's.
+- Reason: the user asked for a random rival speed with an upper limit, and for
+  no limit on the player.
+- Measured consequence that changed the design: with equal acceleration, an
+  uncapped player always beats a capped rival. The rival's best possible time
+  is 54.0 s and the player's is 52.8 s. The rival could never win. The user then
+  chose to give the rival stronger acceleration, which restores a real race.
+- Second measured consequence: with no cap the stop lands at exactly twice the
+  brake point, so the win band is half the platform width. The old 160 m
+  platform gave a 70 m band, below the 120 m floor. The platform is now 280 m
+  wide, from 1620 m to 1900 m, and the measured band is 130 m.
+- Cost: the contract needed revision 3. C1, C3, C4, C9, C11, and C14 all moved.
+- Step: after 6.
+
+## D12 — The judge arms on distance
+
+- Chosen: the judge arms once the nose passes 50 m. A stop before that leaves
+  the race running.
+- Rejected: keep the strict rule from revision 2.
+- Reason: the inspector proved that a 12 frame tap on the throttle, followed by
+  hesitation, ended the game with UNDERSHOT at 0.87 m after 3.2 s.
+- Cost: frozen check C3 had to move its brake point from 2.5 m to 600 m. That
+  is why revision 3 was needed. Check C16 now guards the new rule.
+- Step: after 6.

@@ -1,9 +1,9 @@
-// contract.mjs — runs every check in factory/CONTRACT.md revision 2.
+// contract.mjs — runs every check in factory/CONTRACT.md revision 3.
 // The contract is frozen. Do not weaken a check here. If a check disagrees
 // with the contract, stop and ask a human.
 //
 // Run:  node test/contract.mjs
-// Exit: 0 only when all 13 checks pass.
+// Exit: 0 only when all 16 checks pass.
 
 import { createRequire } from "module";
 import { fileURLToPath } from "url";
@@ -18,6 +18,12 @@ const INDEX = path.join(ROOT, "index.html");
 const URL = "file://" + INDEX;
 
 const RESULTS = ["WIN", "UNDERSHOT", "OVERSHOT", "RIVAL WINS"];
+// The rival draws a top speed for each race, so every deterministic check pins
+// it. RIVAL_FAST is the hardest rival the game can produce.
+const RIVAL_SLOW = 30;
+const RIVAL_FAST = 39;
+const WIN_BRAKE_M = 830;      // a clean win: the stop lands at twice this
+const SHORT_BRAKE_M = 600;    // an undershoot, but past the arming distance
 const report = [];
 
 function otherResults(expected) {
@@ -74,10 +80,10 @@ async function openPage(ctx) {
 }
 
 // Drives one race through the test hooks: full throttle, then brake at brakeAtM.
-async function driveToBrake(page, brakeAtM) {
-  return page.evaluate((x) => {
+async function driveToBrake(page, brakeAtM, rivalMax) {
+  return page.evaluate(([x, rv]) => {
     const d = window.__drivetrain;
-    d.test.start();
+    d.test.start(rv === null ? undefined : { rivalMax: rv });
     d.test.setInput({ throttle: true, brake: false });
     let guard = 0;
     while (d.playerPos < x && d.state === "RACING" && guard < 20000) { d.test.step(1); guard += 1; }
@@ -85,7 +91,7 @@ async function driveToBrake(page, brakeAtM) {
     guard = 0;
     while (d.state === "RACING" && guard < 20000) { d.test.step(1); guard += 1; }
     return { result: d.result, pos: d.playerPos, speed: d.playerSpeed, ms: d.elapsedMs };
-  }, brakeAtM);
+  }, [brakeAtM, rivalMax === undefined ? RIVAL_SLOW : rivalMax]);
 }
 
 async function visibleText(page) {
@@ -121,11 +127,11 @@ async function hold(page, sel, ms) {
 async function C1(ctx) {
   const c = new Check("C1");
   const { page } = await openPage(ctx);
-  const r = await driveToBrake(page, 1420);
+  const r = await driveToBrake(page, WIN_BRAKE_M, RIVAL_SLOW);
   c.eq(r.result, "WIN", "result");
-  c.between(r.pos, 1740, 1900, "playerPos");
+  c.between(r.pos, 1620, 1900, "playerPos");
   c.eq(r.speed, 0, "playerSpeed");
-  c.ok(r.ms < 63200, `elapsedMs: got ${r.ms}, want < 63200`);
+  c.ok(r.ms < 70000, `elapsedMs: got ${r.ms}, want < 70000`);
   await assertResultStrings(c, page, "WIN");
   const shown = await page.evaluate(() => {
     const el = document.querySelector("#time");
@@ -140,7 +146,7 @@ async function fullPowerRun(ctx) {
   const { page } = await openPage(ctx);
   const r = await page.evaluate(() => {
     const d = window.__drivetrain;
-    d.test.start();
+    d.test.start({ rivalMax: 30 });
     d.test.setInput({ throttle: true, brake: false });
     let guard = 0;
     while (d.state === "RACING" && guard < 6000) { d.test.step(1); guard += 1; }
@@ -164,9 +170,10 @@ async function C3(ctx) {
   const { page } = await openPage(ctx);
   const r = await page.evaluate(() => {
     const d = window.__drivetrain;
-    d.test.start();
+    d.test.start({ rivalMax: 30 });
     d.test.setInput({ throttle: true, brake: false });
-    d.test.step(60);
+    let g0 = 0;
+    while (d.playerPos < 600 && d.state === "RACING" && g0 < 20000) { d.test.step(1); g0 += 1; }
     d.test.setInput({ throttle: false, brake: true });
     let guard = 0;
     while (d.state === "RACING" && guard < 20000) { d.test.step(1); guard += 1; }
@@ -177,7 +184,7 @@ async function C3(ctx) {
     return stopped;
   });
   c.eq(r.result, "UNDERSHOT", "result");
-  c.ok(r.pos < 1740, `playerPos: got ${r.pos}, want < 1740`);
+  c.ok(r.pos < 1620, `playerPos: got ${r.pos}, want < 1620`);
   c.eq(r.speed, 0, "playerSpeed");
   c.eq(r.posAfter, r.pos, "playerPos after the result");
   await assertResultStrings(c, page, "UNDERSHOT");
@@ -194,7 +201,7 @@ async function C4() {
   await page.waitForFunction(() => !!window.__drivetrain);
 
   // (a) first win with empty storage
-  const fast = await driveToBrake(page, 1420);
+  const fast = await driveToBrake(page, WIN_BRAKE_M, RIVAL_SLOW);
   c.eq(fast.result, "WIN", "(a) result");
   let body = await visibleText(page);
   c.ok(body.includes("NEW BEST"), "(a) NEW BEST missing on the first win");
@@ -225,7 +232,7 @@ async function C4() {
   await second.page.close();
 
   // (d) a slower win must not claim NEW BEST
-  const slow = await driveToBrake(page, 1560);
+  const slow = await driveToBrake(page, 930, RIVAL_SLOW);
   c.eq(slow.result, "WIN", "(d) result");
   c.ok(slow.ms > fast.ms, `(d) the second win must be slower: ${slow.ms} vs ${fast.ms}`);
   body = await visibleText(page);
@@ -251,7 +258,7 @@ async function C5() {
     });
     const { page, w } = await openPage(ctx);
     c.eq(await page.evaluate(() => window.__drivetrain.state), "IDLE", "(a) state after load");
-    const r = await driveToBrake(page, 1420);
+    const r = await driveToBrake(page, WIN_BRAKE_M, RIVAL_SLOW);
     c.eq(await page.evaluate(() => window.__drivetrain.state), "RESULT", "(a) state after a race");
     c.ok(RESULTS.includes(r.result), `(a) result: got ${r.result}`);
     c.eq(w.pageerrors.length, 0, `(a) pageerror count [${w.pageerrors.join(";")}]`);
@@ -267,7 +274,7 @@ async function C5() {
     await first.page.close();
     const { page, w } = await openPage(ctx);
     c.eq(await page.evaluate(() => window.__drivetrain.state), "IDLE", `${label} state after load`);
-    await driveToBrake(page, 1420);
+    await driveToBrake(page, WIN_BRAKE_M, RIVAL_SLOW);
     c.eq(await page.evaluate(() => window.__drivetrain.state), "RESULT", `${label} state after a race`);
     c.eq(w.pageerrors.length, 0, `${label} pageerror count [${w.pageerrors.join(";")}]`);
     c.eq(w.dialogs, 0, `${label} dialog count`);
@@ -342,7 +349,7 @@ async function C7(ctx) {
     const { page } = await openPage(ctx);
     const r = await page.evaluate((n) => {
       const d = window.__drivetrain;
-      d.test.start();
+      d.test.start({ rivalMax: 30 });
       d.test.setInput({ throttle: true, brake: false });
       let guard = 0;
       while (d.state === "RACING" && guard < 6000) { d.test.step(n); guard += n; }
@@ -387,13 +394,13 @@ async function C9(ctx) {
   const { page } = await openPage(ctx);
   const r = await page.evaluate(() => {
     const d = window.__drivetrain;
-    d.test.start();
-    d.test.step(4200);
+    d.test.start({ rivalMax: 39 });
+    d.test.step(5200);
     return { result: d.result, ms: d.elapsedMs, rivalDone: d.rivalDone };
   });
   c.eq(r.result, "RIVAL WINS", "result");
   c.eq(r.rivalDone, true, "rivalDone");
-  c.between(r.ms, 63000, 63400, "rival finish ms");
+  c.between(r.ms, 54000, 56000, "rival finish ms at its top speed");
   await assertResultStrings(c, page, "RIVAL WINS");
   await page.close();
   c.done(`rival stops at ${(r.ms / 1000).toFixed(3)} s`);
@@ -483,7 +490,7 @@ async function C11(ctx) {
     const page = await ctx.newPage();
     await page.goto(URL);
     await page.waitForFunction(() => !!window.__drivetrain);
-    const r = await driveToBrake(page, x);
+    const r = await driveToBrake(page, x, RIVAL_FAST);
     if (r.result === "WIN") wins.push(x);
     await page.close();
   }
@@ -681,9 +688,9 @@ async function C14() {
   await page.goto("file://" + tmp);
   await page.waitForFunction(() => !!window.__drivetrain, { timeout: 5000 });
 
-  const r = await driveToBrake(page, 1420);
+  const r = await driveToBrake(page, WIN_BRAKE_M, RIVAL_SLOW);
   c.eq(r.result, "WIN", "result in the built page");
-  c.between(r.pos, 1740, 1900, "playerPos in the built page");
+  c.between(r.pos, 1620, 1900, "playerPos in the built page");
   c.eq(await resultText(page), "WIN", "#result in the built page");
 
   const sizes = await page.evaluate(() => {
@@ -707,6 +714,71 @@ async function C14() {
   c.done(`built page wins at ${(r.ms / 1000).toFixed(2)} s`);
 }
 
+// C15 — the rival must really vary, and it must stay inside its limit.
+async function C15(ctx) {
+  const c = new Check("C15");
+  const { page } = await openPage(ctx);
+  const runs = await page.evaluate(() => {
+    const d = window.__drivetrain;
+    const out = [];
+    for (let i = 0; i < 25; i += 1) {
+      d.test.start();                       // no pin: draw a fresh rival
+      const cap = d.rivalMax;
+      let g = 0;
+      while (d.state === "RACING" && g < 20000) { d.test.step(1); g += 1; }
+      out.push({ cap, ms: d.elapsedMs, result: d.result, pos: d.rivalPos });
+    }
+    return out;
+  });
+
+  const caps = runs.map((r) => r.cap);
+  const times = runs.map((r) => r.ms);
+  c.ok(new Set(caps.map((v) => v.toFixed(3))).size >= 20,
+    `the rival must vary: ${new Set(caps.map((v) => v.toFixed(3))).size} distinct caps in 25 races`);
+  c.ok(Math.min(...caps) >= 30, `the rival must not go below 30 m/s: got ${Math.min(...caps)}`);
+  c.ok(Math.max(...caps) <= 39, `the rival must not exceed 39 m/s: got ${Math.max(...caps)}`);
+  c.ok(runs.every((r) => r.result === "RIVAL WINS"), "an idle player must always lose");
+  c.ok(runs.every((r) => r.pos >= 1620 && r.pos <= 1900),
+    `the rival must stop inside the platform: ${Math.min(...runs.map((r) => r.pos)).toFixed(1)}..${Math.max(...runs.map((r) => r.pos)).toFixed(1)}`);
+  c.ok(Math.max(...times) - Math.min(...times) > 5000,
+    `the rival times must spread: ${(Math.min(...times) / 1000).toFixed(1)}..${(Math.max(...times) / 1000).toFixed(1)} s`);
+
+  await page.close();
+  c.done(`caps ${Math.min(...caps).toFixed(1)}..${Math.max(...caps).toFixed(1)} m/s, finishes ${(Math.min(...times) / 1000).toFixed(1)}..${(Math.max(...times) / 1000).toFixed(1)} s`);
+}
+
+// C16 — an early stop must not end the race.
+async function C16(ctx) {
+  const c = new Check("C16");
+  const { page } = await openPage(ctx);
+  const r = await page.evaluate(() => {
+    const d = window.__drivetrain;
+    d.test.start({ rivalMax: 30 });
+    d.test.setInput({ throttle: true, brake: false });
+    d.test.step(12);                        // a short tap, then hesitation
+    d.test.setInput({ throttle: false, brake: false });
+    let g = 0;
+    while (d.playerSpeed > 0 && d.state === "RACING" && g < 4000) { d.test.step(1); g += 1; }
+    const stalled = { state: d.state, pos: d.playerPos, speed: d.playerSpeed };
+    d.test.setInput({ throttle: true, brake: false });
+    d.test.step(600);
+    return { stalled, resumedPos: d.playerPos, resumedState: d.state };
+  });
+
+  c.eq(r.stalled.state, "RACING", "a stop before the arming distance must not end the race");
+  c.eq(r.stalled.speed, 0, "the train must actually reach a standstill");
+  c.ok(r.stalled.pos < 50, `the stall must happen before the arming distance: ${r.stalled.pos}`);
+  c.ok(r.resumedPos > r.stalled.pos + 50, `the player must be able to drive on: ${r.stalled.pos} -> ${r.resumedPos}`);
+  c.eq(r.resumedState, "RACING", "the race must continue after the recovery");
+
+  // and a stop past the arming distance must still be judged
+  const judged = await driveToBrake(page, SHORT_BRAKE_M, RIVAL_SLOW);
+  c.eq(judged.result, "UNDERSHOT", "a stop past the arming distance must still be judged");
+
+  await page.close();
+  c.done(`stalled at ${r.stalled.pos.toFixed(2)} m, drove on to ${r.resumedPos.toFixed(0)} m`);
+}
+
 // --------------------------------------------------------------------- main
 
 async function main() {
@@ -716,9 +788,10 @@ async function main() {
     () => C1(shared), () => C2(shared), () => C3(shared), () => C4(),
     () => C5(), () => C6(), () => C7(shared), () => C8(shared),
     () => C9(shared), () => C10(), () => C11(shared), () => C12(), () => C13(),
-    () => C14()
+    () => C14(), () => C15(shared), () => C16(shared)
   ];
-  const ids = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "C14"];
+  const ids = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10",
+               "C11", "C12", "C13", "C14", "C15", "C16"];
   for (let i = 0; i < stages.length; i += 1) {
     try {
       await stages[i]();

@@ -2,9 +2,26 @@
 
 Project: drivetrain
 Date: 2026-08-10
-Revision: 2. A fresh-context reviewer returned NOT SIGNABLE on revision 1. This
-revision applies every blocker fix and every major fix.
-Status: FROZEN. The user signed this file on 2026-08-10.
+Revision: 3. Revision 2 was frozen and shipped. The Step 6 inspector found two
+checks that could not fail, and the user then changed the game design: the
+player loses the speed limit, and the rival draws a random top speed.
+Status: DRAFT. The user must sign revision 3.
+
+### What changed from revision 2, and why
+
+| Change | Reason |
+|---|---|
+| C1, C3, C4, C11, C14 move to the new geometry | The platform is now 1620 m to 1900 m, because an uncapped player halves the win band. |
+| C6 compares the brake against a coast baseline | The inspector unbound the BRAKE control entirely and revision 2 still printed 13/13. |
+| C7 drives three step sizes | Three runs of one deterministic path carried no independent signal. |
+| C9 pins the rival and expects 54.9 s | The rival time is now random, so the check pins it at the fastest cap. |
+| C10 types into a focused text field | The page stole the space bar, `w`, and `s` from any field beside it. |
+| C11 sweeps against the fastest rival | A random rival makes the band depend on the draw. The check uses the worst case. |
+| C12 injects a 30 s frame gap | A dispatched `visibilitychange` never suspends the animation frames, so the old bound could not be breached. |
+| C13 covers two input sources | One shared boolean let a key release drop a finger's hold. |
+| C14 is new | No check touched `dist/artifact.html`, the file that actually ships. |
+| C15 is new | The rival must really vary and must stay inside its limit. |
+| C16 is new | A stop before 50 m must no longer end the race. |
 
 ## The freeze rule
 
@@ -41,16 +58,16 @@ Rules for the harness:
 
 ### C1 — A clean win
 
-Steps: `test.start()`, then `setInput({throttle:true})`, then step until
-`playerPos >= 1420`, then `setInput({brake:true})`, then step until
+Steps: `test.start({rivalMax: 30})`, then `setInput({throttle:true})`, then step
+until `playerPos >= 830`, then `setInput({brake:true})`, then step until
 `state === 'RESULT'`.
 
 Assertions:
 
 - `result === 'WIN'`.
-- `1740 <= playerPos <= 1900`.
+- `1620 <= playerPos <= 1900`.
 - `playerSpeed === 0`.
-- `elapsedMs < 63200`.
+- `elapsedMs < 70000`.
 - The visible text contains `WIN`.
 - The visible text does not contain `UNDERSHOT`, `OVERSHOT`, or `RIVAL WINS`.
 - The visible time matches the pattern `^\d+\.\d{2}s$`.
@@ -71,13 +88,17 @@ Assertions:
 
 ### C3 — A stop short
 
-Steps: `test.start()`, then `setInput({throttle:true})` for 60 steps, then
-`setInput({brake:true})`, then step until `state === 'RESULT'`.
+Steps: `test.start({rivalMax: 30})`, then `setInput({throttle:true})` until
+`playerPos >= 600`, then `setInput({brake:true})`, then step until
+`state === 'RESULT'`.
+
+The brake point sits past the arming distance of 50 m. A stop before that does
+not end the race. Check C16 covers the early stop.
 
 Assertions:
 
 - `result === 'UNDERSHOT'`.
-- `playerPos < 1740`.
+- `playerPos < 1620`.
 - `playerSpeed === 0` exactly.
 - After the result, `setInput({throttle:true})` and 600 more steps leave
   `playerPos` unchanged.
@@ -119,8 +140,13 @@ sends no key press.
 Assertions:
 
 - A touch on START moves `state` to `RACING`.
-- A touch and hold on THROTTLE for 500 ms raises `playerSpeed` above 0.
-- A touch and hold on BRAKE for 500 ms lowers `playerSpeed`.
+- A touch and hold on THROTTLE for 2000 ms raises `playerSpeed` above 1.
+- The brake must beat coasting. The harness measures the speed lost over 500 ms
+  with no input, then over 500 ms with BRAKE held. The brake must remove at
+  least five times as much speed.
+- A check that compares the brake against the earlier speed is forbidden.
+  Releasing the throttle always lowers the speed, so such a check passes with
+  the BRAKE control entirely unbound.
 - `getBoundingClientRect()` on each control gives width >= 64 and height >= 64.
 - Each measured element carries the input listener.
 - `document.documentElement.scrollWidth <= 390`.
@@ -129,8 +155,15 @@ Human check: play one full race on the phone with your thumbs only.
 
 ### C7 — Full power always loses
 
-The harness runs C2 three times with a new page each time. All three runs give
-`OVERSHOT`.
+The harness drives the same full power race at three step sizes: 1, 60, and
+6000 steps per call.
+
+- All three runs give `OVERSHOT`.
+- All three runs give the same stop position.
+- All three runs give the same `elapsedMs`.
+
+Three runs of one deterministic path are forbidden. They carry no independent
+signal.
 
 ### C8 — The page is self-contained
 
@@ -147,13 +180,15 @@ Assertions:
 
 ### C9 — The rival can win
 
-Steps: `test.start()`, then send no input, then step for 4200 steps.
+Steps: `test.start({rivalMax: 39})`, then send no input, then step for 5200
+steps. The check pins the rival at its fastest, because the rival speed is now
+random.
 
 Assertions:
 
 - `result === 'RIVAL WINS'`.
 - `rivalDone === true`.
-- The rival finish time is 63200 ms, with a tolerance of 200 ms.
+- The rival finish time falls between 54000 ms and 56000 ms.
 - The visible text contains `RIVAL WINS` and no other result string.
 
 ### C10 — Hostile input does not break the page
@@ -168,6 +203,7 @@ Actions, in order:
 3. Press each of these keys one time: `a b q z Escape Enter Tab Shift Control 1
    9 ArrowLeft ArrowRight`.
 4. Resize the window to 320 by 480, then to 1280 by 900.
+5. Focus a text input beside the game and type `go up ws`.
 
 Assertions:
 
@@ -175,15 +211,19 @@ Assertions:
 - The `console.error` count is 0 and the `console.warn` count is 0.
 - `window.onerror === null`. The game installs no handler that hides errors.
 - While the player holds both controls, `playerSpeed` does not rise.
+- The focused text field receives every character, including the spaces, the
+  `w`, and the `s`.
+- Typing does not end the race and does not move the train.
 - The game still reaches `state === 'RESULT'`.
 
 ### C11 — The win band has a usable width
 
-The harness sweeps the brake point. For each `x` from 0 to 2000 in steps of 10:
+The harness sweeps the brake point against the fastest rival the game can draw.
+For each `x` from 0 to 2000 in steps of 10:
 
 - Load a new page.
-- `test.start()`, hold throttle, step until `playerPos >= x`, then hold brake,
-  then step until `state === 'RESULT'`.
+- `test.start({rivalMax: 39})`, hold throttle, step until `playerPos >= x`, then
+  hold brake, then step until `state === 'RESULT'`.
 - Record `result`.
 
 Assertions:
@@ -191,20 +231,27 @@ Assertions:
 - The set of `x` values that give `WIN` forms one contiguous band.
 - The band measures at least 120 m.
 - The band measures at most 600 m.
-- The harness prints the measured band, for example `WIN band: 1420..1560`.
+- The harness prints the measured band, for example `WIN band: 810..940`.
 
 This check stops an unwinnable game and it stops a trivial game.
 
 ### C12 — A hidden tab does not lose the race
 
-Steps: start a race with the real animation loop, reach a speed above 10, then
-dispatch `visibilitychange` to hidden, wait 2 s, then return to visible.
+A dispatched `visibilitychange` event does not suspend the animation frames, so
+a check built on it can never fail. The harness attacks the mechanism instead.
+
+Steps: patch `requestAnimationFrame` before load so the timestamp can be
+shifted. Start a race with the real loop and reach a speed above 10. Then add
+30 s to the animation frame timestamp, exactly as a returning tab does, and wait
+250 ms.
 
 Assertions:
 
-- `playerPos` advances by less than `speed * 2` metres plus 5 m.
+- `playerPos` advances by at most `speed * 0.5 + 2` metres.
 - `state` is still `RACING`.
 - The `pageerror` count is 0.
+
+Without the frame delta clamp the train advances about `speed * 30` metres.
 
 ### C13 — Restart and lost touch behave correctly
 
@@ -215,11 +262,62 @@ Assertions:
 - A START press during `RESULT` begins a new race.
 - A `touchcancel` on THROTTLE clears the throttle. `playerSpeed` stops rising.
 - A `pointerleave` on THROTTLE clears the throttle.
+- A key press and release does not clear a finger that still holds a control.
+- A second finger lifting does not clear the first finger's hold.
+- A restart while a lever is still held drives the new race. `playerPos` grows.
+
+### C14 — The published file works
+
+Every other check reads `index.html`. The file that ships is
+`dist/artifact.html`, built by a transform that no check exercised.
+
+Steps: run `node tools/make-artifact.mjs`. Wrap `dist/artifact.html` in the host
+skeleton. Load it and repeat the clean win from C1.
+
+Assertions:
+
+- The built file carries no `<!doctype`, `<html`, `<head`, or `<body` tag.
+- The built file still contains `__drivetrain`.
+- The built page reaches `result === 'WIN'` with `1620 <= playerPos <= 1900`.
+- `#result` reads `WIN`.
+- THROTTLE and BRAKE each measure at least 64 by 64 pixels.
+- `document.documentElement.scrollWidth <= 390`.
+- The `pageerror` count is 0.
+
+### C15 — The rival varies, and stays inside its limit
+
+The rival draws a top speed for each race. The player has no top speed.
+
+Steps: run 25 races with no pin and no player input.
+
+Assertions:
+
+- At least 20 of the 25 races draw a different rival top speed.
+- No rival top speed goes below 30 m/s.
+- No rival top speed goes above 39 m/s.
+- Every race ends in `RIVAL WINS`, because the player never moves.
+- The rival always stops inside the platform zone.
+- The slowest rival and the fastest rival differ by more than 5 s.
+
+### C16 — An early stop does not end the race
+
+Steps: `test.start({rivalMax: 30})`, hold throttle for 12 steps, release
+everything, then step until the speed reaches 0.
+
+Assertions:
+
+- `state` is still `RACING`.
+- `playerSpeed === 0`.
+- The stop happened before 50 m.
+- Holding throttle again for 600 steps moves the train more than 50 m further.
+- `state` is still `RACING` after the recovery.
+- A brake at 600 m still gives `UNDERSHOT`. The judge still works past the
+  arming distance.
 
 ## Sign-off
 
-The user signed on 2026-08-10.
+Revision 2 was signed on 2026-08-10 and covered C1 to C13.
 
-- [x] The user accepts checks C1 to C13.
+Revision 3 waits for a signature.
 
-This file is now frozen. No later step edits it.
+- [ ] The user accepts checks C1 to C16 as revision 3.

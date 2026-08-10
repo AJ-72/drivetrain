@@ -1,6 +1,6 @@
-STEP: 6 (the inspector)
-NEXT_ARTIFACT: factory/CONTRACT.md revision 3, only if the user allows the edit
-LAST_ACTION: applied the review, added C14, and reached 14/14
-BLOCKED_ON: user decision on the early stop rule, which needs a contract edit
+STEP: 7 (the evidence)
+NEXT_ARTIFACT: a fresh scenario run, written by the user
+LAST_ACTION: built contract revision 3 and reached 16/16
+BLOCKED_ON: user signature on CONTRACT.md revision 3
 TASKS_DONE: 11/11
 CONSECUTIVE_FAILURES: 0

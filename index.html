@@ -156,7 +156,7 @@ html, body {
     <div class="gauge"><span>Best</span><b id="best">--</b></div>
     <div class="gauge"><span>Time</span><b id="time">0.00s</b></div>
     <div class="gauge"><span>km/h</span><b id="speed">0</b></div>
-    <div class="gauge"><span>Platform</span><b id="togo">1740 m</b></div>
+    <div class="gauge"><span>Platform</span><b id="togo">1620 m</b></div>
   </div>
   <div id="stage">
     <canvas id="scene"></canvas>
@@ -176,14 +176,26 @@ html, body {
 
 const K = {
   TRACK_LENGTH_M:     2000,
-  PLATFORM_START_M:   1740,
+  PLATFORM_START_M:   1620,
   PLATFORM_END_M:     1900,
+
+  // The player has no top speed. Speed is bought with distance, and the brake
+  // distance grows with the square of the speed, so a bold run is also a
+  // harder stop. With no cap the stop lands at exactly twice the brake point.
   THROTTLE_ACCEL:     2.5,
   BRAKE_DECEL:        2.5,
   COAST_DECEL:        0.15,
-  MAX_SPEED:          40,
+
+  // The rival accelerates harder than the player and holds a top speed drawn
+  // for each race. It leads early. The player overtakes near the station.
+  RIVAL_ACCEL:        4.0,
+  RIVAL_BRAKE:        4.0,
+  RIVAL_MIN_SPEED:    30,
+  RIVAL_MAX_SPEED:    39,
+  RIVAL_TARGET_M:     1760,
+
+  ARM_AFTER_M:        50,    // a stop before this does not end the race
   STOP_EPSILON:       0.05,
-  RIVAL_BRAKE_M:      1568,
   FIXED_DT:           1 / 60,
   MAX_FRAME_DELTA_MS: 50,
   STEP_MS:            1000 / 60
@@ -194,23 +206,24 @@ const S = {
   result: null,
   playerPos: 0, playerSpeed: 0, playerArmed: false,
   rivalPos: 0,  rivalSpeed: 0,  rivalArmed: false, rivalDone: false,
+  rivalMax: 0,  rivalBrakeM: 0, forcedRivalMax: null,
   steps: 0, elapsedMs: 0,
   bestMs: null, newBest: false, bestSaved: true,
   input: { throttle: false, brake: false }
 };
 
-function stepTrain(train, throttle, brake) {
+function stepTrain(train, throttle, brake, accel, decel, cap) {
   let a;
-  if (brake)         a = -K.BRAKE_DECEL;
-  else if (throttle) a =  K.THROTTLE_ACCEL;
+  if (brake)         a = -decel;
+  else if (throttle) a =  accel;
   else               a = -K.COAST_DECEL;
 
   // The train moves first, then the speed changes. This order matches the
-  // arithmetic in BRIEF.md section 3. The reverse order loses 0.34 m over a
-  // full brake and check C1 fails.
+  // arithmetic in BRIEF.md section 3. The reverse order shortens every brake
+  // and the canonical win stops short of the platform.
   train.pos += train.speed * K.FIXED_DT;
   train.speed += a * K.FIXED_DT;
-  if (train.speed > K.MAX_SPEED) train.speed = K.MAX_SPEED;
+  if (train.speed > cap) train.speed = cap;
   if (a < 0 && train.speed < K.STOP_EPSILON) train.speed = 0;
   if (train.speed < 0) train.speed = 0;
 }
@@ -229,6 +242,8 @@ function judge() {
     finish("OVERSHOT");
     return true;
   }
+  // The judge arms on distance, not on any motion at all. A player who taps
+  // the throttle and hesitates must not lose the race at one metre.
   if (S.playerArmed && S.playerSpeed === 0) {
     if (S.playerPos < K.PLATFORM_START_M)      finish("UNDERSHOT");
     else if (S.playerPos > K.PLATFORM_END_M)   finish("OVERSHOT");
@@ -245,14 +260,15 @@ function step() {
   S.elapsedMs = Math.round(S.steps * K.STEP_MS);
 
   const p = { pos: S.playerPos, speed: S.playerSpeed };
-  stepTrain(p, S.input.throttle && !S.input.brake, S.input.brake);
+  stepTrain(p, S.input.throttle && !S.input.brake, S.input.brake,
+            K.THROTTLE_ACCEL, K.BRAKE_DECEL, Infinity);
   S.playerPos = p.pos; S.playerSpeed = p.speed;
-  if (S.playerSpeed > 0) S.playerArmed = true;
+  if (S.playerPos > K.ARM_AFTER_M) S.playerArmed = true;
 
   if (!S.rivalDone) {
     const r = { pos: S.rivalPos, speed: S.rivalSpeed };
-    const braking = r.pos >= K.RIVAL_BRAKE_M;
-    stepTrain(r, !braking, braking);
+    const braking = r.pos >= S.rivalBrakeM;
+    stepTrain(r, !braking, braking, K.RIVAL_ACCEL, K.RIVAL_BRAKE, S.rivalMax);
     S.rivalPos = r.pos; S.rivalSpeed = r.speed;
     if (S.rivalSpeed > 0) S.rivalArmed = true;
     if (S.rivalArmed && S.rivalSpeed === 0) S.rivalDone = true;
@@ -268,6 +284,13 @@ function startRace() {
   S.result = null;
   S.playerPos = 0; S.playerSpeed = 0; S.playerArmed = false;
   S.rivalPos = 0;  S.rivalSpeed = 0;  S.rivalArmed = false; S.rivalDone = false;
+  // A fresh rival for every race. The brake point follows from the top speed,
+  // so the rival always stops correctly at its own platform mark.
+  S.rivalMax = S.forcedRivalMax !== null
+    ? S.forcedRivalMax
+    : K.RIVAL_MIN_SPEED + Math.random() * (K.RIVAL_MAX_SPEED - K.RIVAL_MIN_SPEED);
+  S.rivalBrakeM = K.RIVAL_TARGET_M - (S.rivalMax * S.rivalMax) / (2 * K.RIVAL_BRAKE);
+
   S.steps = 0; S.elapsedMs = 0; S.newBest = false; S.bestSaved = true;
   // Do not blank the input. A lever that the player still holds must stay
   // engaged into the new race. applyHeld() reads the live held sets.
@@ -613,6 +636,7 @@ window.addEventListener("resize", () => { cssW = 0; drawScene(); });
 
 function uiStart() {
   manual = false;              // the real animation loop owns the clock again
+  S.forcedRivalMax = null;     // a human race always draws a fresh rival
   lastFrameMs = 0;
   accMs = 0;
   if (S.state === "RACING") resetRace(); else startRace();
@@ -720,6 +744,7 @@ window.__drivetrain = {
   get playerSpeed() { return S.playerSpeed; },
   get rivalPos()    { return S.rivalPos; },
   get rivalDone()   { return S.rivalDone; },
+  get rivalMax()    { return S.rivalMax; },
   get elapsedMs()   { return S.elapsedMs; },
   get bestMs()      { return S.bestMs; },
   track: {
@@ -728,7 +753,12 @@ window.__drivetrain = {
     platformEnd:   K.PLATFORM_END_M
   },
   test: {
-    start() { manual = true; startRace(); },
+    // start({rivalMax}) pins the rival so a check stays deterministic.
+    start(opts) {
+      manual = true;
+      S.forcedRivalMax = (opts && typeof opts.rivalMax === "number") ? opts.rivalMax : null;
+      startRace();
+    },
     setInput(next) { setInput(next); },
     step(n) { manual = true; for (let i = 0; i < n; i += 1) step(); },
     reset() { manual = true; resetRace(); }

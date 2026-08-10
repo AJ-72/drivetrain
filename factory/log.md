@@ -268,3 +268,62 @@ breaks frozen check C3, which expects UNDERSHOT from a stop at 2.5 m.
 
 - Halt reason: stop condition 4. The fix requires an edit to `CONTRACT.md`.
 - State: BLOCKED. I wait for the user.
+
+## Cycle 8 — contract revision 3
+
+The user changed the design after the review: a random rival speed with an upper
+limit, and no limit for the player.
+
+- Measured before building, because the change breaks frozen checks:
+  - With no player cap the stop lands at exactly twice the brake point, so the
+    win band is half the platform width. The old platform gave a 70 m band,
+    below the 120 m floor.
+  - With equal acceleration an uncapped player always beats a capped rival. The
+    rival's best possible time is 54.0 s. The player's is 52.8 s. The rival
+    could never win.
+- The user then chose to give the rival stronger acceleration. That restores a
+  real race.
+- The user also chose to fold in the early stop fix.
+- Changed:
+  - The player has no top speed. `stepTrain` now takes the acceleration, the
+    brake, and the cap as arguments.
+  - The rival draws a top speed between 30 and 39 m/s for each race, and
+    accelerates at 4.0. Its brake point follows from its draw.
+  - The platform widened to 1620 m to 1900 m, to hold the 120 m fairness floor.
+  - The judge arms after 50 m.
+  - `test.start({rivalMax})` pins the rival so a check stays deterministic.
+- Contract: revision 3, checks C1 to C16. All 16 pass.
+
+```
+PASS C1  stop 1661.95 m at 51.55 s
+PASS C2  stop 2000.0 m
+PASS C3  stop 1202.68 m
+PASS C4  best 51.55 s
+PASS C5  blocked, not-a-number, and -1
+PASS C6  brake 1.250 vs coast 0.078 m/s per 500 ms
+PASS C7  OVERSHOT at 2000.0 m for step sizes 1, 60, 6000
+PASS C8  1 request, 25583 bytes
+PASS C9  rival stops at 54.900 s
+PASS C10 10 taps, both controls, 13 keys, 2 resizes
+PASS C11 WIN band: 810..940 (130 m)
+PASS C12 advance 4.5 m across a 30 s frame gap
+PASS C13 restart, result restart, touchcancel, pointerleave, two sources, held restart
+PASS C14 built page wins at 51.55 s
+PASS C15 caps 30.4..37.4 m/s, finishes 56.4..65.5 s
+PASS C16 stalled at 0.87 m, drove on to 126 m
+```
+
+### The race now reads as a race
+
+Traced with the rival pinned at its fastest:
+
+```
+t=10s  you 151 m, rival 239 m
+lead changes to YOU at t=25s, pos 844 m
+t=25s  you 844 m, rival 824 m
+```
+
+The rival leads for 25 seconds. The player overtakes just before the brake
+point. The overtake and the brake decision land at the same moment.
+
+- State: the contract is DRAFT at revision 3. It waits for a signature.

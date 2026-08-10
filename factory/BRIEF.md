@@ -3,8 +3,8 @@
 Project: drivetrain
 Date: 2026-08-10
 Branch: `claude/train-racing-game-1omoqu`
-Revision: 2. A fresh-context review found missing numbers. This revision adds
-them.
+Revision: 3. The user changed the design after the Step 6 review. The player
+has no speed limit. The rival draws a random top speed and accelerates harder.
 
 ## 1. Who uses it
 
@@ -28,14 +28,22 @@ A weaker model must not invent any of these values. Every value is fixed.
 
 ```
 TRACK_LENGTH_M      = 2000      // metres, from start to the end of the rail
-PLATFORM_START_M    = 1740      // metres
+PLATFORM_START_M    = 1620      // metres
 PLATFORM_END_M      = 1900      // metres
-THROTTLE_ACCEL      = 2.5       // metres per second squared
-BRAKE_DECEL         = 2.5       // metres per second squared
+
+THROTTLE_ACCEL      = 2.5       // metres per second squared, the player
+BRAKE_DECEL         = 2.5       // metres per second squared, the player
 COAST_DECEL         = 0.15      // metres per second squared, no input
-MAX_SPEED           = 40        // metres per second
+                                // the player has NO top speed
+
+RIVAL_ACCEL         = 4.0       // the rival pulls away first
+RIVAL_BRAKE         = 4.0
+RIVAL_MIN_SPEED     = 30        // metres per second
+RIVAL_MAX_SPEED     = 39        // metres per second, the upper limit
+RIVAL_TARGET_M      = 1760      // where the rival stops
+
+ARM_AFTER_M         = 50        // a stop before this does not end the race
 STOP_EPSILON        = 0.05      // metres per second
-RIVAL_FINISH_S      = 63.2      // seconds of race time
 FIXED_DT            = 1/60      // seconds, one simulation step
 MAX_FRAME_DELTA_MS  = 50        // clamp for one animation frame
 ```
@@ -46,12 +54,16 @@ judge.
 
 These numbers give this behaviour:
 
-- The train reaches `MAX_SPEED` after 16.0 s and after 320 m.
-- A brake from `MAX_SPEED` to a stop needs 16.0 s and 320 m.
-- Full power, then a brake at 1420 m, stops the nose at 1740 m after 59.5 s.
-- Full power, then a brake at 1580 m, stops the nose at 1900 m after 63.5 s.
-- The rival stops at 63.2 s. A brake later than about 1568 m loses the race.
+- The player has no top speed, so the brake distance equals the distance already
+  run. The nose stops at exactly twice the brake point.
+- A brake at 830 m stops the nose at 1660 m after 51.55 s. That is the fastest
+  safe run.
+- A brake at 940 m stops the nose at 1880 m after about 54.9 s.
+- A brake before 810 m gives `UNDERSHOT`. A brake after 950 m gives `OVERSHOT`.
 - Full power with no brake reaches 2000 m. That is always an overshoot.
+- The rival finishes between about 54.9 s and 66.2 s, by the draw.
+- The rival leads for the first 25 s. The player overtakes near 790 m.
+- Measured win band against the fastest rival: 810 m to 940 m, a width of 130 m.
 
 ## 4. The rules of a race
 
@@ -62,9 +74,11 @@ These numbers give this behaviour:
 3. If the player holds THROTTLE and BRAKE together, the game applies the brake
    only.
 4. If the player holds nothing, `COAST_DECEL` removes speed.
-5. Speed never goes above `MAX_SPEED`. Speed never goes below 0.
-6. The rival ignores the player. The rival completes its stop at
-   `RIVAL_FINISH_S`.
+5. The player speed has no upper limit. The rival speed stops at its draw.
+   Speed never goes below 0.
+6. The rival ignores the player. The rival draws a top speed between
+   `RIVAL_MIN_SPEED` and `RIVAL_MAX_SPEED` for each race. The rival brakes so
+   that it stops at `RIVAL_TARGET_M`.
 7. The simulation uses a fixed step of `FIXED_DT` with an accumulator. The
    result must not change with the frame rate.
 8. The game clamps one animation frame delta to `MAX_FRAME_DELTA_MS`.
@@ -74,7 +88,9 @@ These numbers give this behaviour:
 - The train starts at speed 0.
 - The game treats speed below `STOP_EPSILON` as 0. The game then sets the speed
   to exactly 0.
-- The game arms the judge on the first step where speed goes above 0.
+- The game arms the judge on the first step where `playerPos` passes
+  `ARM_AFTER_M`. A stop before that leaves the race running, so a player who
+  taps the throttle and hesitates does not lose at one metre.
 - After the judge is armed, the game judges the race on the first step where
   speed returns to exactly 0.
 - The game reads `playerPos` on that same step.
@@ -103,6 +119,8 @@ Extra rules:
   wins.
 - The player never starts to move: the rival completes its stop and the result
   is `RIVAL WINS`.
+- The player stops before `ARM_AFTER_M`: the race continues. The player can
+  drive on.
 - Exactly one result string appears on the screen. The other three do not
   appear.
 
@@ -110,8 +128,9 @@ Extra rules:
 
 Full power from the start to the track end always ends in `OVERSHOT`.
 
-The set of brake points that end in `WIN` must form one band. The band must
-measure at least 120 m. The band must measure at most 600 m.
+The set of brake points that end in `WIN` must form one band, measured against
+the fastest rival the game can draw. The band must measure at least 120 m. The
+band must measure at most 600 m.
 
 This rule protects the riskiest assumption in `KILL.md`. It stops an unwinnable
 game and it stops a trivial game.
@@ -161,11 +180,12 @@ window.__drivetrain = {
   playerSpeed,  // metres per second
   rivalPos,     // metres
   rivalDone,    // boolean
+  rivalMax,     // metres per second, the top speed drawn for this race
   elapsedMs,    // integer milliseconds of race time
   bestMs,       // integer milliseconds, or null
   track: { length, platformStart, platformEnd },
   test: {
-    start(),                              // begin a race
+    start(opts),                          // begin a race; {rivalMax} pins the rival
     setInput({ throttle, brake }),        // set the held inputs
     step(nFrames),                        // advance n fixed steps
     reset()                               // return to IDLE
