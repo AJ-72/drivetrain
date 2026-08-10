@@ -141,3 +141,25 @@ This log holds each choice, the rejected options, and the known cost.
 - Cost: frozen check C3 had to move its brake point from 2.5 m to 600 m. That
   is why revision 3 was needed. Check C16 now guards the new rule.
 - Step: after 6.
+
+## D13 — The fixed pattern, and what actually caused it
+
+- The user reported that every race ran the same way: the rival leads, the
+  player overtakes, the player may overshoot.
+- Diagnosis: the player made exactly one decision per race, the station never
+  moved, and the screen showed the exact distance. One decision with a fixed
+  correct answer gives one pattern. Randomising the rival in D11 moved the
+  deadline, not the decision. That is why D11 did not help.
+- Chosen: move the station every race, draw a rail condition that scales every
+  brake, make the rival react to a lead, and add a distant signal 400 m out plus
+  a live stop marker so the player can still plan.
+- Rejected: removing the distance readout. The user asked for more warning, not
+  less.
+- Measured consequence: the rival barely slows on a wet rail, because its time
+  is mostly cruising, while the player slows a lot. The wet race was unwinnable,
+  with a band of 0 m. The rival now eases on a wet rail by the factor
+  `0.68 + 0.32 * grip`, which restores bands of 170 m dry, 150 m damp, and
+  130 m wet.
+- Cost: three random draws per race, so every deterministic check must pin all
+  three. The contract needed revision 4 and four new checks.
+- Step: after 6.

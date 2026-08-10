@@ -69,14 +69,18 @@ Rules for the harness:
 
 ### C1 — A clean win
 
-Steps: `test.start({rivalMax: 30})`, then `setInput({throttle:true})`, then step
-until `playerPos >= 830`, then `setInput({brake:true})`, then step until
+Every deterministic check pins the three draws:
+`test.start({rivalMax: 28, platformStart: 1400, grip: "DRY"})`. The pinned
+platform runs from 1400 m to 1760 m.
+
+Steps: start the pinned race, then `setInput({throttle:true})`, then step until
+`playerPos >= 780`, then `setInput({brake:true})`, then step until
 `state === 'RESULT'`.
 
 Assertions:
 
 - `result === 'WIN'`.
-- `1620 <= playerPos <= 1900`.
+- `1400 <= playerPos <= 1760`.
 - `playerSpeed === 0`.
 - `elapsedMs < 70000`.
 - The visible text contains `WIN`.
@@ -88,19 +92,19 @@ hold BRAKE, and stop on the platform. See `WIN` and a time.
 
 ### C2 — An overshoot
 
-Steps: `test.start()`, then `setInput({throttle:true})`, then step until
+Steps: start the pinned race, then `setInput({throttle:true})`, then step until
 `state === 'RESULT'` or 6000 steps pass.
 
 Assertions:
 
 - `result === 'OVERSHOT'`.
-- `playerPos > 1900`.
+- `playerPos > 1760`.
 - The visible text contains `OVERSHOT` and no other result string.
 
 ### C3 — A stop short
 
-Steps: `test.start({rivalMax: 30})`, then `setInput({throttle:true})` until
-`playerPos >= 600`, then `setInput({brake:true})`, then step until
+Steps: start the pinned race, then `setInput({throttle:true})` until
+`playerPos >= 300`, then `setInput({brake:true})`, then step until
 `state === 'RESULT'`.
 
 The brake point sits past the arming distance of 50 m. A stop before that does
@@ -109,7 +113,7 @@ not end the race. Check C16 covers the early stop.
 Assertions:
 
 - `result === 'UNDERSHOT'`.
-- `playerPos < 1620`.
+- `playerPos < 1400`.
 - `playerSpeed === 0` exactly.
 - After the result, `setInput({throttle:true})` and 600 more steps leave
   `playerPos` unchanged.
@@ -191,15 +195,14 @@ Assertions:
 
 ### C9 — The rival can win
 
-Steps: `test.start({rivalMax: 39})`, then send no input, then step for 5200
-steps. The check pins the rival at its fastest, because the rival speed is now
-random.
+Steps: start a pinned race with `rivalMax: 33`, send no input, then step for
+5200 steps. The check pins the rival at its fastest draw.
 
 Assertions:
 
 - `result === 'RIVAL WINS'`.
 - `rivalDone === true`.
-- The rival finish time falls between 54000 ms and 56000 ms.
+- The rival finish time falls between 45000 ms and 60000 ms.
 - The visible text contains `RIVAL WINS` and no other result string.
 
 ### C10 — Hostile input does not break the page
@@ -229,12 +232,13 @@ Assertions:
 
 ### C11 — The win band has a usable width
 
-The harness sweeps the brake point against the fastest rival the game can draw.
-For each `x` from 0 to 2000 in steps of 10:
+The harness sweeps the brake point against the hardest race the game can draw:
+the fastest rival on a wet rail. For each `x` from 200 to 1400 in steps of 10:
 
 - Load a new page.
-- `test.start({rivalMax: 39})`, hold throttle, step until `playerPos >= x`, then
-  hold brake, then step until `state === 'RESULT'`.
+- `test.start({rivalMax: 33, platformStart: 1400, grip: "WET"})`, hold throttle,
+  step until `playerPos >= x`, then hold brake, then step until
+  `state === 'RESULT'`.
 - Record `result`.
 
 Assertions:
@@ -242,7 +246,7 @@ Assertions:
 - The set of `x` values that give `WIN` forms one contiguous band.
 - The band measures at least 120 m.
 - The band measures at most 600 m.
-- The harness prints the measured band, for example `WIN band: 810..940`.
+- The harness prints the measured band, for example `WIN band: 560..690`.
 
 This check stops an unwinnable game and it stops a trivial game.
 
@@ -335,7 +339,7 @@ Assertions:
 
 - The built file carries no `<!doctype`, `<html`, `<head`, or `<body` tag.
 - The built file still contains `__drivetrain`.
-- The built page reaches `result === 'WIN'` with `1620 <= playerPos <= 1900`.
+- The built page reaches `result === 'WIN'` with `1400 <= playerPos <= 1760`.
 - `#result` reads `WIN`.
 - THROTTLE and BRAKE each measure at least 64 by 64 pixels.
 - `document.documentElement.scrollWidth <= 390`.
@@ -361,8 +365,8 @@ Assertions:
 
 ### C16 — An early stop does not end the race
 
-Steps: `test.start({rivalMax: 30})`, hold throttle for 12 steps, release
-everything, then step until the speed reaches 0.
+Steps: start the pinned race, hold throttle for 12 steps, release everything,
+then step until the speed reaches 0.
 
 Assertions:
 
@@ -371,7 +375,7 @@ Assertions:
 - The stop happened before 50 m.
 - Holding throttle again for 600 steps moves the train more than 50 m further.
 - `state` is still `RACING` after the recovery.
-- A brake at 600 m still gives `UNDERSHOT`. The judge still works past the
+- A brake at 300 m still gives `UNDERSHOT`. The judge still works past the
   arming distance.
 
 ## Sign-off

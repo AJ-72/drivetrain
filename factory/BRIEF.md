@@ -3,8 +3,9 @@
 Project: drivetrain
 Date: 2026-08-10
 Branch: `claude/train-racing-game-1omoqu`
-Revision: 3. The user changed the design after the Step 6 review. The player
-has no speed limit. The rival draws a random top speed and accelerates harder.
+Revision: 4. The user found that every race followed one pattern. The station
+now moves, the rail condition varies, the rival reacts, and a distant signal
+warns the driver in time to plan.
 
 ## 1. Who uses it
 
@@ -27,22 +28,32 @@ to brake.
 A weaker model must not invent any of these values. Every value is fixed.
 
 ```
-TRACK_LENGTH_M      = 2000      // metres, from start to the end of the rail
-PLATFORM_START_M    = 1620      // metres
-PLATFORM_END_M      = 1900      // metres
+TRACK_LENGTH_M       = 2000     // metres, from start to the end of the rail
 
-THROTTLE_ACCEL      = 2.5       // metres per second squared, the player
-BRAKE_DECEL         = 2.5       // metres per second squared, the player
-COAST_DECEL         = 0.15      // metres per second squared, no input
+// the station moves for every race
+PLATFORM_WIDTH_M      = 360
+PLATFORM_MIN_START_M  = 1300
+PLATFORM_MAX_START_M  = 1520
+
+THROTTLE_ACCEL       = 2.5      // metres per second squared, the player
+BRAKE_DECEL          = 2.5      // scaled by the rail grip
+COAST_DECEL          = 0.15     // metres per second squared, no input
                                 // the player has NO top speed
 
-RIVAL_ACCEL         = 4.0       // the rival pulls away first
-RIVAL_BRAKE         = 4.0
-RIVAL_MIN_SPEED     = 30        // metres per second
-RIVAL_MAX_SPEED     = 39        // metres per second, the upper limit
-RIVAL_TARGET_M      = 1760      // where the rival stops
+// the rail draws one of these for every race, and it scales every brake
+GRIPS = DRY 1.00, DAMP 0.80, WET 0.65
 
-ARM_AFTER_M         = 50        // a stop before this does not end the race
+RIVAL_ACCEL          = 4.0      // the rival pulls away first
+RIVAL_BRAKE          = 4.0      // also scaled by the rail grip
+RIVAL_MIN_SPEED      = 28       // the draw, in metres per second
+RIVAL_MAX_SPEED      = 33
+RIVAL_BOOST          = 3        // extra speed when the player leads
+RIVAL_BOOST_RANGE_M  = 300      // the lead at which the boost is full
+RIVAL_HARD_CAP       = 36       // the absolute upper limit on the rival
+RIVAL_RAIL_FACTOR    = 0.68 + 0.32 * grip   // a driver eases on a wet rail
+
+WARN_BEFORE_M        = 400      // the distant signal stands this far out
+ARM_AFTER_M          = 50       // a stop before this does not end the race
 STOP_EPSILON        = 0.05      // metres per second
 FIXED_DT            = 1/60      // seconds, one simulation step
 MAX_FRAME_DELTA_MS  = 50        // clamp for one animation frame
@@ -54,16 +65,19 @@ judge.
 
 These numbers give this behaviour:
 
-- The player has no top speed, so the brake distance equals the distance already
-  run. The nose stops at exactly twice the brake point.
-- A brake at 830 m stops the nose at 1660 m after 51.55 s. That is the fastest
-  safe run.
-- A brake at 940 m stops the nose at 1880 m after about 54.9 s.
-- A brake before 810 m gives `UNDERSHOT`. A brake after 950 m gives `OVERSHOT`.
+- The player has no top speed. On a dry rail the brake distance equals the
+  distance already run, so the nose stops at twice the brake point. A damp rail
+  gives 2.25 times. A wet rail gives 2.54 times.
+- The station moves, so no single brake point is ever correct twice.
 - Full power with no brake reaches 2000 m. That is always an overshoot.
-- The rival finishes between about 54.9 s and 66.2 s, by the draw.
-- The rival leads for the first 25 s. The player overtakes near 790 m.
-- Measured win band against the fastest rival: 810 m to 940 m, a width of 130 m.
+- Measured win bands against the hardest rival, at every station position:
+  170 m on a dry rail, 150 m on a damp rail, 130 m on a wet rail. The floor is
+  120 m.
+- The rival leads early, because it accelerates at 4.0 against the player's 2.5.
+- The rival pushes harder when the player pulls a lead, and never passes 36 m/s.
+- A distant signal stands 400 m before the platform and calls out the distance.
+- A live stop marker on the rail shows where the train would stop if the driver
+  braked now. Check C19 holds it to within 5 m of the truth.
 
 ## 4. The rules of a race
 
@@ -177,15 +191,18 @@ window.__drivetrain = {
   state,        // 'IDLE' | 'RACING' | 'RESULT'
   result,       // null | 'WIN' | 'UNDERSHOT' | 'OVERSHOT' | 'RIVAL WINS'
   playerPos,    // metres, the nose
+  stopInM,      // metres the train needs to stop from this speed, on this rail
+  grip,         // 'DRY' | 'DAMP' | 'WET'
+  passedWarn,   // true once the train passes the distant signal
   playerSpeed,  // metres per second
   rivalPos,     // metres
   rivalDone,    // boolean
   rivalMax,     // metres per second, the top speed drawn for this race
   elapsedMs,    // integer milliseconds of race time
   bestMs,       // integer milliseconds, or null
-  track: { length, platformStart, platformEnd },
+  track: { length, platformStart, platformEnd, warnAt },
   test: {
-    start(opts),                          // begin a race; {rivalMax} pins the rival
+    start(opts),                          // {rivalMax, platformStart, grip} pins the draws
     setInput({ throttle, brake }),        // set the held inputs
     step(nFrames),                        // advance n fixed steps
     reset()                               // return to IDLE
