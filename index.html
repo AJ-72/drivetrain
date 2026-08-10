@@ -64,7 +64,7 @@ html, body {
 
 /* the instrument strip */
 #hud {
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(3, 1fr);
   background: var(--panel); border: 1px solid var(--edge);
   border-radius: 4px; overflow: hidden;
   font-variant-numeric: tabular-nums;
@@ -74,10 +74,8 @@ html, body {
   padding: 6px 8px; border-left: 1px solid var(--edge);
   min-width: 0;
 }
-#hud .gauge:nth-child(4n + 1) { border-left: none; }
-#hud .gauge:nth-child(n + 5) { border-top: 1px solid var(--edge); }
-#gap.ahead { color: var(--go); }
-#gap.behind { color: var(--stop); }
+#hud .gauge:nth-child(3n + 1) { border-left: none; }
+#hud .gauge:nth-child(n + 4) { border-top: 1px solid var(--edge); }
 #rail.slippery { color: var(--warn); }
 #stopin.armed { color: var(--go); }
 #stopin.late { color: var(--stop); }
@@ -174,9 +172,7 @@ html, body {
     <div class="gauge"><span>Best</span><b id="best">--</b></div>
     <div class="gauge"><span>Time</span><b id="time">0.00s</b></div>
     <div class="gauge"><span>Rail</span><b id="rail">DRY</b></div>
-    <div class="gauge"><span>Gap</span><b id="gap">0 m</b></div>
     <div class="gauge"><span>You km/h</span><b id="speed">0</b></div>
-    <div class="gauge"><span>Rival km/h</span><b id="rspeed">0</b></div>
     <div class="gauge"><span>Platform in</span><b id="togo">-- m</b></div>
     <div class="gauge"><span>Stop needs</span><b id="stopin">0 m</b></div>
   </div>
@@ -430,8 +426,6 @@ const el = {
   brake:   document.getElementById("brake"),
   throttle: document.getElementById("throttle"),
   speed:   document.getElementById("speed"),
-  rspeed:  document.getElementById("rspeed"),
-  gap:     document.getElementById("gap"),
   rail:    document.getElementById("rail"),
   stopin:  document.getElementById("stopin"),
   callout: document.getElementById("callout"),
@@ -454,7 +448,6 @@ function render() {
     : "");
   setText(el.start, S.state === "RACING" ? "RESTART" : "START");
   setText(el.speed, String(Math.round(S.playerSpeed * 3.6)));
-  setText(el.rspeed, String(Math.round(S.rivalSpeed * 3.6)));
   setText(el.rail, S.gripName);
   if (el.rail) el.rail.classList.toggle("slippery", S.grip < 1);
 
@@ -477,13 +470,6 @@ function render() {
     el.callout.innerHTML = showCall
       ? "<b>DISTANT SIGNAL &middot; PLATFORM " + Math.max(0, Math.round(toPlatform)) + " M</b>"
       : "";
-  }
-
-  const lead = S.playerPos - S.rivalPos;
-  setText(el.gap, (lead >= 0 ? "+" : "") + Math.round(lead) + " m");
-  if (el.gap) {
-    el.gap.classList.toggle("ahead", lead > 0);
-    el.gap.classList.toggle("behind", lead < 0);
   }
   if (el.throttle) el.throttle.classList.toggle("on", S.input.throttle);
   if (el.brake) el.brake.classList.toggle("on", S.input.brake);
@@ -699,6 +685,32 @@ function drawStopMarker(X, y, tall) {
   g.closePath(); g.fill();
 }
 
+// A driver reads a rival by eye, not from its instruments. When the rival
+// leaves the camera, the track carries an arrow at that edge instead.
+function drawRivalEdge(X, y, tall) {
+  if (S.state === "IDLE") return;
+  const x = X(S.rivalPos);
+  if (x >= -10 && x <= cssW + 10) return;
+  const ahead = x > cssW;
+  const gap = Math.abs(Math.round(S.rivalPos - S.playerPos));
+  const colour = ahead ? pal.stop : pal.go;
+  const ex = ahead ? cssW - 6 : 6;
+  const dir = ahead ? 1 : -1;
+  g.fillStyle = colour;
+  g.beginPath();
+  g.moveTo(ex, y - tall * 0.6);
+  g.lineTo(ex - dir * 11, y - tall * 0.6 - 7);
+  g.lineTo(ex - dir * 11, y - tall * 0.6 + 7);
+  g.closePath(); g.fill();
+  g.font = "800 9px system-ui, sans-serif";
+  const text = gap + " M";
+  const w = g.measureText(text).width;
+  g.fillStyle = pal.panel;
+  g.fillRect(ahead ? ex - 15 - w - 3 : ex + 15 - 3, y - tall * 0.6 - 13, w + 6, 12);
+  g.fillStyle = colour;
+  g.fillText(text, ahead ? ex - 15 - w : ex + 15, y - tall * 0.6 - 4);
+}
+
 function drawScene() {
   if (!g || !el.scene) return;
   sizeCanvas();
@@ -799,6 +811,7 @@ function drawScene() {
   drawSignal(X, playerY, tall);
   drawStopMarker(X, playerY, tall);
   drawTrain(S.rivalPos, rivalY, pal.muted, X, scale, tall);
+  drawRivalEdge(X, rivalY, tall);
   drawTrain(S.playerPos, playerY, pal.go, X, scale, tall);
 }
 
@@ -922,6 +935,7 @@ window.__drivetrain = {
   get rivalMax()    { return S.rivalMax; },
   get rivalBase()   { return S.rivalBase; },
   get rivalSpeed()  { return S.rivalSpeed; },
+  get rivalGapM()   { return S.rivalPos - S.playerPos; },
   get grip()        { return S.gripName; },
   get stopInM()     { return brakeDistance(S.playerSpeed, K.BRAKE_DECEL); },
   get passedWarn()  { return S.passedWarn; },

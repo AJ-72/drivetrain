@@ -78,6 +78,11 @@ These numbers give this behaviour:
 - A distant signal stands 400 m before the platform and calls out the distance.
 - A live stop marker on the rail shows where the train would stop if the driver
   braked now. Check C19 holds it to within 5 m of the truth.
+- The screen never states the rival speed. A driver reads a rival by eye, not
+  from its instruments. When the rival leaves the camera, an arrow at that edge
+  of its own rail states the distance instead.
+- The distance to the platform stays hidden until the train passes the distant
+  signal. The signal is the moment the driver starts to plan.
 
 ## 4. The rules of a race
 
@@ -202,6 +207,7 @@ window.__drivetrain = {
   result,       // null | 'WIN' | 'UNDERSHOT' | 'OVERSHOT' | 'RIVAL WINS'
   playerPos,    // metres, the nose
   stopInM,      // metres the train needs to stop from this speed, on this rail
+  rivalGapM,    // metres the rival leads by; negative when the player leads
   grip,         // 'DRY' | 'DAMP' | 'WET'
   passedWarn,   // true once the train passes the distant signal
   playerSpeed,  // metres per second

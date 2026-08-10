@@ -16,6 +16,7 @@ Status: DRAFT. The user must sign revision 4.
 | The rival reacts to the player | It pushed only on a fixed script before. C15 now proves it answers a lead. |
 | A distant signal warns 400 m out | The user asked for a way to plan. C20 is new. |
 | A live stop marker on the rail | It shows where the train would stop if the driver braked now. C19 is new, and it proves the marker does not lie. |
+| The screen never states the rival speed | No racing game gives a driver another car's instruments. The rival is read by eye, and by an arrow at the screen edge when it leaves the camera. |
 | Every check pins the station, the rail, and the rival | Three random draws would otherwise make every check flaky. |
 
 ### What changed from revision 2, and why
