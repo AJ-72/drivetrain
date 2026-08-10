@@ -90,12 +90,21 @@ These numbers give this behaviour:
 4. If the player holds nothing, `COAST_DECEL` removes speed.
 5. The player speed has no upper limit. The rival speed stops at its draw.
    Speed never goes below 0.
-6. The rival ignores the player. The rival draws a top speed between
-   `RIVAL_MIN_SPEED` and `RIVAL_MAX_SPEED` for each race. The rival brakes so
-   that it stops at `RIVAL_TARGET_M`.
-7. The simulation uses a fixed step of `FIXED_DT` with an accumulator. The
-   result must not change with the frame rate.
-8. The game clamps one animation frame delta to `MAX_FRAME_DELTA_MS`.
+6. The rival draws a top speed between `RIVAL_MIN_SPEED` and `RIVAL_MAX_SPEED`
+   for each race, then eases it by `RIVAL_RAIL_FACTOR` for the rail.
+7. The rival answers the player. When the player leads, the rival adds up to
+   `RIVAL_BOOST` to its top speed, in proportion to the lead over
+   `RIVAL_BOOST_RANGE_M`. Its speed never passes `RIVAL_HARD_CAP`.
+8. The rival brakes at the last moment its own stopping distance allows, so it
+   stops in the middle of the platform whatever speed it holds.
+9. The station is drawn for each race. The platform runs from a start between
+   `PLATFORM_MIN_START_M` and `PLATFORM_MAX_START_M`, and measures
+   `PLATFORM_WIDTH_M`.
+10. A distant signal stands `WARN_BEFORE_M` before the platform. The screen
+    calls out when the train passes it.
+11. The simulation uses a fixed step of `FIXED_DT` with an accumulator. The
+    result must not change with the frame rate.
+12. The game clamps one animation frame delta to `MAX_FRAME_DELTA_MS`.
 
 ## 5. The stop rule, in exact terms
 
@@ -108,10 +117,11 @@ These numbers give this behaviour:
 - After the judge is armed, the game judges the race on the first step where
   speed returns to exactly 0.
 - The game reads `playerPos` on that same step.
-- `PLATFORM_START_M <= playerPos <= PLATFORM_END_M`: the stop is valid. Both
-  bounds count as valid.
-- `playerPos < PLATFORM_START_M`: the result is `UNDERSHOT`.
-- `playerPos > PLATFORM_END_M`: the result is `OVERSHOT`.
+- The platform bounds are the ones drawn for this race.
+- `platformStart <= playerPos <= platformEnd`: the stop is valid. Both bounds
+  count as valid.
+- `playerPos < platformStart`: the result is `UNDERSHOT`.
+- `playerPos > platformEnd`: the result is `OVERSHOT`.
 - If `playerPos` reaches `TRACK_LENGTH_M` at any speed, the result is
   `OVERSHOT`.
 - The judge fires one time. The player cannot drive again after the judge fires.

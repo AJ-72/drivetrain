@@ -327,3 +327,51 @@ The rival leads for 25 seconds. The player overtakes just before the brake
 point. The overtake and the brake decision land at the same moment.
 
 - State: the contract is DRAFT at revision 3. It waits for a signature.
+
+## Cycle 9 — contract revision 4, the fixed pattern
+
+The user reported that every race ran the same way, and asked to see the rival
+speed.
+
+- Diagnosis: the player made one decision per race, the station never moved, and
+  the screen showed the exact answer. One decision with a fixed correct answer
+  gives one pattern. The random rival from cycle 8 moved the deadline, not the
+  decision.
+- Built: a moving station, a rail condition that scales every brake, a rival
+  that answers a lead, a distant signal 400 m out, and a live stop marker.
+- The HUD now shows the rail, the gap, the rival speed, and the braking
+  distance.
+
+### SURPRISING — the wet race was unwinnable
+
+The first build gave these bands against the fastest rival:
+
+```
+DRY   130 m
+DAMP   70 m
+WET     0 m
+```
+
+Cause: a wet rail lengthens the player's brake a great deal, but the rival
+spends most of its race cruising, so its time barely moves. The rival now eases
+its top speed on a wet rail, by `0.68 + 0.32 * grip`. A real driver does the
+same. Measured after the fix, at every station position:
+
+```
+DRY   170 m
+DAMP  150 m
+WET   130 m
+```
+
+### SURPRISING — two of my own new checks were wrong, not the game
+
+- C19 compared a predicted stop of 2286 m against a track that ends at 2000 m.
+  The marker was right. The check asked an impossible question.
+- C20 read the signal banner before any animation frame had painted it.
+- C15 could not see the rival react at all, because an idle player never leads.
+
+All three are now fixed, and C15 drives ahead to prove the reaction: the rival
+rises from 28.0 to 31.0 m/s and never passes 36.
+
+- Contract: revision 4, checks C1 to C20. All 20 pass.
+- State: revision 4 is DRAFT. It waits for a signature.

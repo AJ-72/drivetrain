@@ -24,7 +24,7 @@ The game gives four results:
 
 ```
 index.html                 the whole game: markup, style, and script
-test/contract.mjs          16 checks that drive a real browser
+test/contract.mjs          20 checks that drive a real browser
 tools/make-artifact.mjs    strips the outer tags for the Artifact host
 dist/artifact.html         the published copy, built by the script above
 factory/                   the pipeline record: how and why it was built
@@ -60,7 +60,11 @@ Nothing else persists. The game sends nothing to any server.
 | You want | Change this |
 |---|---|
 | A longer or shorter race | `K.TRACK_LENGTH_M` |
-| An easier or harder stop | `K.PLATFORM_START_M` and `K.PLATFORM_END_M` |
+| An easier or harder stop | `K.PLATFORM_WIDTH_M`. The band is the width divided by about two. |
+| Where the station can sit | `K.PLATFORM_MIN_START_M` and `K.PLATFORM_MAX_START_M` |
+| How slippery a wet rail is | `K.GRIPS` |
+| How early the warning comes | `K.WARN_BEFORE_M` |
+| How hard the rival answers a lead | `K.RIVAL_BOOST` and `K.RIVAL_BOOST_RANGE_M` |
 | A faster train | `K.THROTTLE_ACCEL`. The player has no top speed. |
 | A stronger brake | `K.BRAKE_DECEL` |
 | A harder rival | Raise `K.RIVAL_MAX_SPEED` or `K.RIVAL_ACCEL` |
@@ -85,20 +89,25 @@ The player has no top speed. The brake uses the same force as the throttle, so
 the brake distance equals the distance already run. The nose stops at exactly
 twice the brake point. That one fact explains the whole feel of the game.
 
-With the shipped values:
+The rail grip scales every brake, so the stop is not always twice the brake
+point:
 
-- A brake at 830 m stops the nose at 1660 m after 51.55 s. That is the fastest
-  safe run.
-- A brake below 810 m undershoots. A brake above 950 m overshoots.
-- The rival draws a top speed between 30 and 39 m/s for each race, and finishes
-  between about 54.9 s and 66.2 s.
-- Against the fastest rival, a brake between 810 m and 940 m wins.
-- The rival leads for the first 25 s, because it accelerates harder. The player
-  overtakes near 790 m.
+| Rail | Grip | Stop, as a multiple of the brake point |
+|---|---|---|
+| DRY | 1.00 | 2.00 |
+| DAMP | 0.80 | 2.25 |
+| WET | 0.65 | 2.54 |
 
-Widening or narrowing the platform changes the win band by half that amount,
-because the stop is twice the brake point. That is why the platform is 280 m
-wide for a 130 m band.
+Measured win bands against the hardest rival, at every station position:
+170 m dry, 150 m damp, 130 m wet. The floor is 120 m.
+
+A wet rail hurts the player much more than the rival, because the rival spends
+most of its race cruising. Without a correction the wet race is unwinnable, and
+the measured band was 0 m. `RIVAL_RAIL_FACTOR` eases the rival on a wet rail,
+which is also what a real driver does.
+
+Widening the platform widens the band by roughly half the change, because the
+stop is about twice the brake point.
 
 Change one number and all of these move. The checks tell you where they land.
 
@@ -133,7 +142,7 @@ Change one number and all of these move. The checks tell you where they land.
 node test/contract.mjs
 ```
 
-The command prints one line per check and exits 0 only when all 16 pass. It
+The command prints one line per check and exits 0 only when all 20 pass. It
 needs no install. It reads Playwright from the container path
 `/opt/node22/lib/node_modules`.
 
