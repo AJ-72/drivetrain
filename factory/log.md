@@ -175,3 +175,46 @@ C11 reports `WIN band: 1420..1560 (140 m)`.
 
 - Halt reason: T4 is `[STRUCTURAL]` and the user keeps this halt.
 - State: BLOCKED. I wait for the user.
+
+## Cycle 5 — T5, T8, T9
+
+- Tasks: T5 `[LEAF]` the scene, T8 `[LEAF]` robustness, T9 `[LEAF]` the build
+  script.
+- Changed:
+  - `index.html`: added the canvas scene. The scene draws two rails, sleepers,
+    the platform band, a station roof, distance markers, and two trains. Each
+    train has a locomotive, a chimney, and two coaches. All art is code.
+  - `index.html`: added SPEED and PLATFORM to the HUD.
+  - `index.html`: the stage now holds 44vh. The controls take the rest of the
+    screen. A thumb reaches both controls.
+  - `tools/make-artifact.mjs`: builds `dist/artifact.html` from `index.html`.
+- Proof T5: screenshots at 390x844 and at 320x480, in the light theme and in
+  the dark theme. Each screenshot shows the two rails, both trains, the platform
+  band, the station, and the HUD.
+- Proof T8: C8, C10, and C12 stay green. The page loads one file. The page emits
+  no console error and no console warning.
+- Proof T9: `node tools/make-artifact.mjs` writes 17620 bytes. The output holds
+  no outer tag and still holds `__drivetrain`.
+- Contract: 13/13 after every task. Exit code 0.
+
+### Three defects that only a screenshot showed
+
+The contract stayed green through all three. No check saw any of them.
+
+1. The trains looked like road vans. I redrew them as a locomotive with a
+   chimney and two coaches.
+2. A large empty area sat below the START button. The stage now takes 44vh and
+   the controls take the rest.
+3. The distance label at the screen edge was cut. The code now skips a label
+   that does not fit.
+
+This is the evidence for the earlier note: a green contract says nothing about
+the picture.
+
+### Extra proof — the published copy runs
+
+I wrapped `dist/artifact.html` the way the Artifact host wraps it. The wrapped
+copy loads, shows the title `Drivetrain`, runs a full race to `WIN` at 59.500 s,
+applies the CSS, and throws no error.
+
+- Next: T10 `[STRUCTURAL]`, publish and hand the link to the user.
