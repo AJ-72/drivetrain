@@ -423,3 +423,43 @@ band to 290 m. Bands are now 160 m to 190 m.
 
 - Contract: revision 5, checks C1 to C23. All 23 pass.
 - State: revision 5 is DRAFT. It waits for a signature.
+
+## Cycle 11 — the local checkout rolled back
+
+The container was restored from a snapshot taken at cycle 4. The local `HEAD`
+sat at `6cbff69`, and the reflog held no record of any later commit.
+
+Nothing was lost. Every commit had already reached GitHub before the rollback.
+
+```
+origin/claude/train-racing-game-1omoqu = 0264414  (README, revision 5, all of it)
+local HEAD                             = 6cbff69  (cycle 4)
+```
+
+I confirmed the local head was an ancestor of the remote head, then
+fast-forwarded. 12 files changed, 3569 insertions. The restored tree passes
+23/23.
+
+Lesson: pushing after every cycle is what saved this. A local-only session would
+have lost eight cycles of work.
+
+## Cycle 12 — Step 7 evidence assembled
+
+Wrote `factory/EVIDENCE.md`. Two of the three parts are ready. The third needs
+the user, and that is the point of the step.
+
+### Two probes for the honest list
+
+- The `OVERSHOT` reason branch `ran N m past the platform` is reachable and
+  correct: `{"res":"OVERSHOT","pos":1823,"why":"ran 183 m past the platform"}`.
+  C22 never exercises it, because full power always ends in `ran out of track`.
+  Correct behaviour, missing check.
+- Landscape was suspected broken. Measured at 844 by 390: the page fits, no
+  vertical overflow, controls 225 by 120. Cleared.
+
+### The largest gap, stated plainly
+
+Not one of the 23 checks reads a pixel. The canvas is unverified by machine.
+Cycle 4 proved what that costs: 13/13 green with a blank screen.
+
+- State: BLOCKED on a fresh scenario from the user.
