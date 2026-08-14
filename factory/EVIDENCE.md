@@ -7,27 +7,87 @@ Step 7 asks for three things. Two are ready. One needs the user.
 
 | Part | State |
 |---|---|
-| 1. A run against a fresh scenario the user writes | **BLOCKED.** The user must write the scenario. |
+| 1. A run against a fresh scenario the user writes | **DONE.** Section 1. |
 | 2. The failures found in review, with their fixes | Ready. Section 2. |
 | 3. An honest list of what still does not work | Ready. Section 3. |
 
 ---
 
-## 1. The fresh scenario — BLOCKED
+## 1. The fresh scenario — RUN
 
-The rule from the Factory: the proof is an unscripted run against a scenario the
-user writes, and that scenario must not be in the contract.
+### The scenario, in the user's words
 
-The reason is the whole point of the step. A recording of software passing its
-own exam proves only that the exam ran. This project already produced the proof:
-at cycle 4 every check passed while the canvas was blank. The suite was green and
-the game showed nothing.
+> 5 races, 2 per rail. change the brake point randomly
+>
+> Win slower, loose, validate the best time doesn't change.
 
-I cannot write this scenario. If I write it, I choose the exam again.
+Nothing here is in the contract. C4 covers a slower win, but no check covers a
+**loss** after a best time, no check runs a sequence across the three rails, and
+no check uses a random brake point.
 
-A scenario must name what the user does and what the user expects to see. For
-example: "I play three races, one on each rail, and I expect the correct brake
-point to move each time."
+### Part 1 — five races, a random brake point each time
+
+The station and the rival were left unpinned, so both were drawn fresh. The rail
+was pinned only to guarantee the coverage the user asked for. The brake point
+came from `Math.random()` in the range 400 m to 1400 m, and was not adjusted.
+
+```
+race 1  DRY   brake@ 862  platform 1446-1686  ->  UNDERSHOT  (stopped 94 m short of the platform)
+race 2  DRY   brake@ 470  platform 1428-1668  ->  UNDERSHOT  (stopped 610 m short of the platform)
+race 3  DAMP  brake@1105  platform 1507-1747  ->  OVERSHOT   (ran 15 m past the platform)
+race 4  DAMP  brake@1299  platform 1352-1592  ->  RIVAL WINS (you were still moving at 11 km/h)
+race 5  WET   brake@ 766  platform 1371-1611  ->  WIN        (stopped 58 m into the platform)
+
+pageerrors: 0   console errors and warnings: 0
+```
+
+Five random brake points produced all four results. One win in five, by luck
+alone, which is the shape a game of judgement should have.
+
+Race 3 missed by 15 m. Race 4 is the trap from the user's own screenshot: a late
+brake on a damp rail left the train crawling at 11 km/h when the rival stopped.
+
+### Part 2 — win, win slower, lose
+
+The station and the rail were pinned to 1400 m and DRY, so the two winning times
+are comparable. Storage was cleared first.
+
+The aiming used the stop marker, not knowledge of the answer: hold power until
+`playerPos + stopInM` reaches the aim point, then brake. This is what a player
+does with the instrument the game provides.
+
+```
+1 win         WIN       48.47s  stop 1425 m  best=48.47s  stored="48467"  banner="NEW BEST"
+2 win slower  WIN       51.93s  stop 1618 m  best=48.47s  stored="48467"  banner=""
+3 lose        OVERSHOT  47.08s  stop 2000 m  best=48.47s  stored="48467"  banner=""
+```
+
+| The user's requirement | Result |
+|---|---|
+| The second win is slower | yes, 48.47 s to 51.93 s |
+| The best time does not change after the slower win | yes, 48.47 s |
+| No `NEW BEST` banner on the slower win | yes |
+| The best time does not change after the loss | yes, 48.47 s |
+| The stored value is never rewritten | yes, `48467` throughout |
+| Page errors | 0 |
+
+### One thing the scenario found by accident
+
+**The losing run was faster than the winning run.** `OVERSHOT` at 47.08 s beat
+the win at 48.47 s, because a train that never brakes reaches the end of the
+track quickly.
+
+The code handles it correctly: only a `WIN` touches the best time. But it shows
+that elapsed time alone does not rank runs, and a future feature that sorts by
+time without filtering on the result would record a loss as a record.
+
+### What this run does not prove
+
+- It drove through the test hooks, not through a finger on real glass over real
+  time. The touch path itself is covered only by C6.
+- Part 2 pinned the station and the rail. Without pinning, the two winning times
+  are not comparable, so this was a deliberate deviation.
+- It still reads no pixels. Section 3 covers that.
 
 ---
 

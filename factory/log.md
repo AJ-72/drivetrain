@@ -463,3 +463,27 @@ Not one of the 23 checks reads a pixel. The canvas is unverified by machine.
 Cycle 4 proved what that costs: 13/13 green with a blank screen.
 
 - State: BLOCKED on a fresh scenario from the user.
+
+## Cycle 13 — Step 7, the fresh scenario ran
+
+The user wrote the scenario: five races, two per rail, with a random brake
+point; then a win, a slower win, and a loss, checking the best time holds.
+
+Part 1 gave all four results from five random brake points, with one win. No
+page errors. Race 4 reproduced the user's own screenshot by chance: a late brake
+on a damp rail left the train crawling at 11 km/h when the rival stopped.
+
+Part 2 passed every requirement. The best time held at 48.47 s through a slower
+win and through a loss, and the stored value was never rewritten.
+
+### SURPRISING — the losing run was faster than the winning run
+
+`OVERSHOT` at 47.08 s against a win at 48.47 s. A train that never brakes reaches
+the end of the track quickly.
+
+The code is right, because only a `WIN` records a best time. The lesson is for
+later: elapsed time alone does not rank runs. A leaderboard that sorts by time
+without filtering on the result would record a loss as a record.
+
+- Step 7 is complete.
+- The only gate left is the signature on contract revision 5.
