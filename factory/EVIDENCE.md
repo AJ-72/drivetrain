@@ -1,7 +1,7 @@
 # EVIDENCE.md — Step 7, The Evidence
 
 Project: drivetrain
-Contract: revision 5, checks C1 to C23, FROZEN 2026-08-15.
+Contract: revision 6, checks C1 to C24, FROZEN 2026-08-15.
 
 Step 7 asks for three things. All three are done.
 
@@ -135,23 +135,36 @@ exists because something got through.
 
 This list is evidence, not reassurance. Each item was checked.
 
-### The checks cannot see the game
+### The checks now see part of the game, but only part
 
-**Not one check reads a pixel.** All 23 read `window.__drivetrain` or DOM text.
-The entire canvas is unverified by machine.
+**Closed since this list was written.** A screenshot from the user showed the
+distant signal's `400 M` label clipped off the right edge of the canvas. No
+state-based check could see it. C24 now reads pixels, and `fitText` clamps every
+label inside the canvas.
 
-This is not a theory. At cycle 4 the suite printed 13/13 while `drawScene()` was
-empty and the canvas was blank.
+C24 proves: the canvas carries paint, the player train is drawn, the camera
+holds the nose near 35 percent of the width, and the amber platform band appears
+once the station is in view. It was proved able to fail three ways — a blank
+canvas, a moved camera, and a missing platform band each turn it red.
 
-Unverified by any check:
+Its first blank-canvas assertion could not fail, which is worth recording. A
+cleared canvas is transparent, and the assertion compared colours, so an empty
+canvas scored as fully painted. It now reads alpha. The real build carries
+8.3 percent paint; the blanked build reads 0.00 percent.
+
+**Still unverified by any check:**
 
 - The stop marker's drawn position. C19 proves the *number* is within 1.09 m of
-  the truth. Nothing proves the dashed line is drawn where that number says.
+  the truth. Nothing proves the dashed line sits where that number says.
 - The screen-edge arrow for an off-camera rival.
-- The amber diamond at the distant signal. C20 proves the state and the banner.
-- The platform hatching, the trains, the station roof, the distance markers.
+- The amber diamond at the distant signal. C20 proves the state and the banner,
+  and C24 finds amber pixels, but neither proves the diamond is a diamond.
+- The station roof, the platform hatching, the distance markers, the train
+  shapes.
+- Anything in the dark theme. C24 samples the default theme only.
 
-Only a human looking at the screen closes this gap.
+A human looking at the screen still closes more than the machine does. The
+user's own screenshot found the last defect.
 
 ### A reason branch no check covers
 

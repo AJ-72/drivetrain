@@ -1,11 +1,6 @@
-// contract.mjs — runs every check in factory/CONTRACT.md revision 5, plus C24.
-//
-// The contract is frozen at C1..C23. Do not weaken a check here. If a check
+// contract.mjs — runs every check in factory/CONTRACT.md revision 6.
+// The contract is frozen at C1..C24. Do not weaken a check here. If a check
 // disagrees with the contract, stop and ask a human.
-//
-// C24 is NOT yet in the frozen contract. It reads canvas pixels, which no other
-// check does, and it is held here awaiting a signature on revision 6. A harness
-// stricter than its contract is safe; a harness weaker than its contract is not.
 //
 // Run:  node test/contract.mjs
 // Exit: 0 only when all 24 checks pass.

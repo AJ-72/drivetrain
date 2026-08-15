@@ -2,10 +2,17 @@
 
 Project: drivetrain
 Date: 2026-08-10
-Revision: 5. The user found the acceleration was linear: the pull never fell
-away and nothing pushed back. Revision 5 replaces it with the real shape, and it
-absorbs revision 4, which was never signed.
-Status: FROZEN. The user signed revision 5 on 2026-08-15.
+Revision: 6. A screenshot from the user showed a label clipped off the edge of
+the canvas. No check could see it, because no check read a pixel. Revision 6
+adds the first check that does.
+Status: FROZEN. The user signed revision 6 on 2026-08-15.
+
+### What changed from revision 5, and why
+
+| Change | Reason |
+|---|---|
+| C24 is new | It reads the canvas. Every other check reads state or DOM text, and at cycle 4 the suite printed 13/13 with a blank screen. |
+| Labels are clamped inside the canvas | The user's screenshot showed the distant signal's `400 M` label running off the right edge. Twenty-three checks did not see it. |
 
 ### What changed from revision 4, and why
 
@@ -73,8 +80,9 @@ Rules for the harness:
 - The harness loads `index.html` through a `file://` path.
 - The harness loads Playwright from the global path in the container. The
   harness installs no package.
-- The harness reads game state through `window.__drivetrain`. The harness does
-  not read pixels.
+- The harness reads game state through `window.__drivetrain`, except in C24.
+  C24 reads canvas pixels, because nothing else can see the picture. No other
+  check may read pixels, and C24 must never compare a golden image.
 - The harness drives the simulation through `window.__drivetrain.test`, except
   in C6. Real time never decides a result.
 
@@ -385,6 +393,31 @@ Assertions:
 - The rival begins braking before its own stopping point.
 - The banner reads `RIVAL IS STOPPING`.
 
+### C24 — The scene is actually drawn
+
+Every other check reads state or DOM text. None of them sees the canvas, and at
+cycle 4 the suite printed 13/13 while the screen was blank.
+
+This check reads pixels. It does not compare a golden image, which would break
+on any font change or device pixel ratio change. It asserts what must be true of
+any correct picture.
+
+Steps: race to 700 m, sample the canvas, race on to 1300 m, sample again.
+
+Assertions:
+
+- More than 1 percent of the canvas carries paint. Paint means a non-zero alpha.
+  Comparing colours is forbidden here: a cleared canvas is transparent, and a
+  colour comparison scores an empty canvas as fully painted.
+- The player train is drawn.
+- The camera holds the train nose between 28 percent and 46 percent of the
+  canvas width. The camera promises 35 percent.
+- The amber platform band is painted once the station comes into view.
+- The scene stays painted near the station.
+
+Every label drawn on the canvas passes through `fitText`, which clamps it inside
+the canvas. A clipped label is invisible to every state-based check.
+
 ### C14 — The published file works
 
 Every other check reads `index.html`. The file that ships is
@@ -444,6 +477,7 @@ Revisions 3 and 4 were built and measured but never signed. Revision 5
 supersedes both.
 
 - [x] The user accepts checks C1 to C23 as revision 5. Signed 2026-08-15.
+- [x] The user accepts checks C1 to C24 as revision 6. Signed 2026-08-15.
 
 This file is now frozen. No later step edits it. A check that looks wrong is a
 stop-and-ask, never an edit.

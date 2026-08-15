@@ -517,3 +517,38 @@ Every gate is now closed:
 | 6 Inspector | `REVIEW.md` | done, DO NOT SHIP, all findings closed |
 | 7 Evidence | `EVIDENCE.md` | done, the user's own scenario ran |
 | 8 Guide | `GUIDE.md` | done, and corrected to match the code |
+
+## Cycle 15 — a screenshot found what 23 checks could not
+
+The user sent a screenshot and asked what a number meant. The number was the
+pinned stop marker. The screenshot also showed the distant signal's `400 M`
+label running off the right edge of the canvas.
+
+No state-based check can see a clipped label. Twenty-three checks did not.
+
+- Added `fitText`, which clamps every canvas label inside the canvas.
+- Added C24, the first check that reads pixels.
+
+C24 asserts nothing about a golden image, which would break on any font or
+pixel-ratio change. It asserts what must hold for any correct picture: the
+canvas carries paint, the player train is drawn, the camera holds the nose near
+35 percent of the width, and the amber platform band appears at the station.
+
+Proved able to fail three ways: a blank canvas, a camera moved to 80 percent,
+and a deleted platform band each turn C24 red and nothing else.
+
+### SURPRISING — my own new assertion could not fail
+
+The first blank-canvas assertion compared pixel colours against the panel
+colour. A cleared canvas is transparent, so every pixel differed from the panel
+and an empty canvas scored as fully painted. The other assertions caught the
+blank build, which is the only reason I noticed.
+
+It now reads alpha. The real build carries 8.3 percent paint. The blanked build
+reads 0.00 percent and fails.
+
+This is the third time in this project that a check could not fail, after the
+two the Step 6 inspector found. The lesson holds: write the check, then break
+the thing on purpose and watch it go red. Nothing else proves a check works.
+
+- Contract: revision 6, checks C1 to C24, FROZEN.

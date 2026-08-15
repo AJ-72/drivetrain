@@ -27,7 +27,7 @@ itself.
 
 ```
 index.html                 the whole game: markup, style, and script
-test/contract.mjs          23 checks that drive a real browser
+test/contract.mjs          24 checks that drive a real browser
 tools/make-artifact.mjs    strips the outer tags for the Artifact host
 dist/artifact.html         the published copy, built by the script above
 factory/                   the pipeline record: how and why it was built
@@ -46,7 +46,7 @@ Read the file in this order.
    and the fixed time step.
 2. **`S`** — the whole game state, in one object.
 3. **The simulation** — `stepTrain`, `judge`, `step`, `startRace`, `resetRace`.
-4. **The screen** — `render`, `reasonText`, `drawScene`, `drawTrain`,
+4. **The screen** — `render`, `reasonText`, `fitText`, `drawScene`, `drawTrain`,
    `drawStation`, `drawSignal`, `drawWarningBoard`, `drawStopMarker`,
    `drawRivalEdge`, and the input handlers.
 
@@ -150,6 +150,9 @@ Change one number and all of these move. The checks tell you where they land.
 9. **External references.** The Artifact host blocks every other host. One CDN
    link and the page breaks in a way that a local test does not show. Check C8
    guards this.
+10. **Canvas labels.** Every label goes through `fitText`, which clamps it inside
+    the canvas. A clipped label is invisible to every state-based check. A
+    screenshot from the owner is what found the last one.
 
 ## 8. How to test
 
@@ -157,7 +160,7 @@ Change one number and all of these move. The checks tell you where they land.
 node test/contract.mjs
 ```
 
-The command prints one line per check and exits 0 only when all 23 pass. It
+The command prints one line per check and exits 0 only when all 24 pass. It
 needs no install. It reads Playwright from the container path
 `/opt/node22/lib/node_modules`.
 
