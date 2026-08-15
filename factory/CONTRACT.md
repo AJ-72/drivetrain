@@ -5,7 +5,7 @@ Date: 2026-08-10
 Revision: 5. The user found the acceleration was linear: the pull never fell
 away and nothing pushed back. Revision 5 replaces it with the real shape, and it
 absorbs revision 4, which was never signed.
-Status: DRAFT. The user must sign revision 5.
+Status: FROZEN. The user signed revision 5 on 2026-08-15.
 
 ### What changed from revision 4, and why
 
@@ -443,4 +443,7 @@ Revision 2 was signed on 2026-08-10 and covered C1 to C13.
 Revisions 3 and 4 were built and measured but never signed. Revision 5
 supersedes both.
 
-- [ ] The user accepts checks C1 to C23 as revision 5.
+- [x] The user accepts checks C1 to C23 as revision 5. Signed 2026-08-15.
+
+This file is now frozen. No later step edits it. A check that looks wrong is a
+stop-and-ask, never an edit.

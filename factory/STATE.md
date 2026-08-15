@@ -1,6 +1,6 @@
-STEP: 7 (the evidence)
-NEXT_ARTIFACT: none. Step 7 is complete.
-LAST_ACTION: ran the user's fresh scenario and recorded it in factory/EVIDENCE.md
-BLOCKED_ON: a signature on CONTRACT.md revision 5
+STEP: 8 (complete)
+NEXT_ARTIFACT: none. Every gate is closed.
+LAST_ACTION: the user signed CONTRACT.md revision 5 and it is now frozen
+BLOCKED_ON: nothing
 TASKS_DONE: 11/11
 CONSECUTIVE_FAILURES: 0

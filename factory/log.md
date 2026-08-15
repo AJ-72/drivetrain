@@ -487,3 +487,33 @@ without filtering on the result would record a loss as a record.
 
 - Step 7 is complete.
 - The only gate left is the signature on contract revision 5.
+
+## Cycle 14 — the contract is frozen, the pipeline is closed
+
+The user signed contract revision 5. `CONTRACT.md` now reads FROZEN. Checks C1
+to C23 are the agreed bar. No later step edits the file, and a check that looks
+wrong is a stop-and-ask.
+
+Before the signature I found `GUIDE.md` three revisions behind. It claimed 20
+checks, named constants that no longer exist, and stated that the nose stops at
+twice the brake point, which stopped being true when the pull became non-linear.
+`README.md` points agents at that file.
+
+That is the cost of an unsigned record, demonstrated on the last day of the
+project: the document drifts and nobody notices, because nothing holds it to the
+code.
+
+Every gate is now closed:
+
+| Step | Artifact | State |
+|---|---|---|
+| 0 Kill gate | `KILL.md` | done, no abandon condition, recorded honestly |
+| 0.5 Ground truth | `GROUND_TRUTH.md` | done, found the phone |
+| 1 Interview | `BRIEF.md` revision 5 | done |
+| 2 Contract | `CONTRACT.md` revision 5 | FROZEN, C1 to C23 |
+| 3 Blueprint | `PLAN.md` | done, T0 to T10 |
+| 4 Work order | `HANDOFF.md` | signed |
+| 5 Build | `index.html`, `test/contract.mjs` | 11/11 tasks, 23/23 checks |
+| 6 Inspector | `REVIEW.md` | done, DO NOT SHIP, all findings closed |
+| 7 Evidence | `EVIDENCE.md` | done, the user's own scenario ran |
+| 8 Guide | `GUIDE.md` | done, and corrected to match the code |

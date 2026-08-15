@@ -1,15 +1,15 @@
 # EVIDENCE.md — Step 7, The Evidence
 
 Project: drivetrain
-Contract: revision 5, checks C1 to C23, DRAFT.
+Contract: revision 5, checks C1 to C23, FROZEN 2026-08-15.
 
-Step 7 asks for three things. Two are ready. One needs the user.
+Step 7 asks for three things. All three are done.
 
 | Part | State |
 |---|---|
 | 1. A run against a fresh scenario the user writes | **DONE.** Section 1. |
-| 2. The failures found in review, with their fixes | Ready. Section 2. |
-| 3. An honest list of what still does not work | Ready. Section 3. |
+| 2. The failures found in review, with their fixes | **DONE.** Section 2. |
+| 3. An honest list of what still does not work | **DONE.** Section 3. |
 
 ---
 
