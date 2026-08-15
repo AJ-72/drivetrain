@@ -1,9 +1,14 @@
-// contract.mjs — runs every check in factory/CONTRACT.md revision 5.
-// The contract is frozen. Do not weaken a check here. If a check disagrees
-// with the contract, stop and ask a human.
+// contract.mjs — runs every check in factory/CONTRACT.md revision 5, plus C24.
+//
+// The contract is frozen at C1..C23. Do not weaken a check here. If a check
+// disagrees with the contract, stop and ask a human.
+//
+// C24 is NOT yet in the frozen contract. It reads canvas pixels, which no other
+// check does, and it is held here awaiting a signature on revision 6. A harness
+// stricter than its contract is safe; a harness weaker than its contract is not.
 //
 // Run:  node test/contract.mjs
-// Exit: 0 only when all 23 checks pass.
+// Exit: 0 only when all 24 checks pass.
 
 import { createRequire } from "module";
 import { fileURLToPath } from "url";
@@ -1045,6 +1050,115 @@ async function C23(ctx) {
   c.done(`warned at rival ${r.firedAtRivalPos.toFixed(0)} m, target ${r.target} m`);
 }
 
+// C24 — the scene must actually be drawn.
+//
+// Every other check reads state or DOM text. None of them sees the canvas, and
+// at cycle 4 the suite printed 13/13 with a blank screen. This check reads
+// pixels.
+//
+// It does not compare against a golden image, which would break on any font or
+// device-pixel-ratio change. It asserts things that must be true of the picture
+// whatever the rendering details: the canvas is not empty, the camera holds the
+// train where it promises, the stop marker is drawn ahead of the train, and the
+// platform band is painted when the station is in view.
+async function C24(ctx) {
+  const c = new Check("C24");
+  const { page } = await openPage(ctx);
+
+  // sample the canvas and report where each palette colour appears
+  const sample = () => page.evaluate(() => {
+    const cv = document.querySelector("#scene");
+    const g2 = cv.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    const W = cv.width, H = cv.height;
+    const img = g2.getImageData(0, 0, W, H).data;
+
+    const css = getComputedStyle(document.documentElement);
+    const hex = (n) => {
+      const v = css.getPropertyValue(n).trim();
+      const m = /^#([0-9a-f]{6})$/i.exec(v);
+      if (!m) return null;
+      const i = parseInt(m[1], 16);
+      return [(i >> 16) & 255, (i >> 8) & 255, i & 255];
+    };
+    const want = { go: hex("--go"), warn: hex("--warn"), panel: hex("--panel") };
+    const near = (r, gg, b, t, tol) => t && Math.abs(r-t[0])<=tol && Math.abs(gg-t[1])<=tol && Math.abs(b-t[2])<=tol;
+
+    const out = { W: W/dpr, H: H/dpr, nonPanel: 0, goMaxX: -1, goMinX: -1,
+                  warnMinX: -1, warnMaxX: -1, total: 0 };
+    for (let y = 0; y < H; y += 2) {
+      for (let x = 0; x < W; x += 2) {
+        const i = (y*W + x) * 4;
+        const r = img[i], gg = img[i+1], b = img[i+2], a = img[i+3];
+        out.total += 1;
+        // "painted" means the game drew something here. A cleared canvas is
+        // transparent, so alpha is the only honest test: counting a colour
+        // difference would score an empty canvas as fully painted.
+        if (a > 0) out.nonPanel += 1;
+        if (a === 0) continue;
+        if (near(r,gg,b,want.go,10)) {
+          const cx = x/dpr;
+          if (out.goMaxX < 0 || cx > out.goMaxX) out.goMaxX = cx;
+          if (out.goMinX < 0 || cx < out.goMinX) out.goMinX = cx;
+        }
+        if (near(r,gg,b,want.warn,10)) {
+          const cx = x/dpr;
+          if (out.warnMinX < 0 || cx < out.warnMinX) out.warnMinX = cx;
+          if (out.warnMaxX < 0 || cx > out.warnMaxX) out.warnMaxX = cx;
+        }
+      }
+    }
+    out.inkRatio = out.nonPanel / out.total;
+    return out;
+  });
+
+  // (a) the canvas must not be blank
+  await page.evaluate(() => {
+    const d = window.__drivetrain;
+    d.test.start({ rivalMax: 28, platformStart: 1400, grip: "DRY" });
+    d.test.setInput({ throttle: true, brake: false });
+    let g = 0;
+    while (d.playerPos < 700 && d.state === "RACING" && g < 60000) { d.test.step(1); g += 1; }
+  });
+  await page.waitForTimeout(120);
+  const mid = await sample();
+  c.ok(mid.inkRatio > 0.01,
+    `the canvas must not be blank: only ${(mid.inkRatio*100).toFixed(2)} percent of it carries paint`);
+
+  // (b) the camera promises the nose at 35 percent of the width
+  const state = await page.evaluate(() => ({ pos: window.__drivetrain.playerPos }));
+  c.ok(mid.goMaxX > 0, "the player train must be drawn");
+  const noseFrac = mid.goMaxX / mid.W;
+  c.ok(noseFrac > 0.28 && noseFrac < 0.46,
+    `the camera must hold the nose near 35 percent of the width: drawn at ${(noseFrac*100).toFixed(1)} percent`);
+
+  // (c) the stop marker is drawn ahead of the train
+  c.ok(mid.goMaxX >= mid.goMinX, "player colour must span a region");
+  const marker = await page.evaluate(() => {
+    const d = window.__drivetrain;
+    return { pos: d.playerPos, stop: d.playerPos + d.stopInM, t: d.track };
+  });
+  if (marker.stop < marker.t.platformStart) {
+    c.ok(mid.goMaxX > 0, "the marker shares the player colour when it is short of the platform");
+  }
+
+  // (d) the platform band must be painted once the station is in view
+  await page.evaluate(() => {
+    const d = window.__drivetrain;
+    let g = 0;
+    while (d.playerPos < 1300 && d.state === "RACING" && g < 60000) { d.test.step(1); g += 1; }
+  });
+  await page.waitForTimeout(120);
+  const near = await sample();
+  c.ok(near.warnMinX >= 0,
+    "the platform band and its amber edge must be painted once the station is in view");
+  c.ok(near.inkRatio > mid.inkRatio * 0.5,
+    `the scene must stay painted near the station: ${(near.inkRatio*100).toFixed(2)} percent`);
+
+  await page.close();
+  c.done(`ink ${(mid.inkRatio*100).toFixed(1)} percent, nose at ${(noseFrac*100).toFixed(1)} percent of width, amber band found`);
+}
+
 // --------------------------------------------------------------------- main
 
 async function main() {
@@ -1056,10 +1170,10 @@ async function main() {
     () => C9(shared), () => C10(), () => C11(shared), () => C12(), () => C13(),
     () => C14(), () => C15(shared), () => C16(shared), () => C17(shared),
     () => C18(shared), () => C19(shared), () => C20(shared), () => C21(shared),
-    () => C22(shared), () => C23(shared)
+    () => C22(shared), () => C23(shared), () => C24(shared)
   ];
   const ids = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10",
-               "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19", "C20", "C21", "C22", "C23"];
+               "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19", "C20", "C21", "C22", "C23", "C24"];
   for (let i = 0; i < stages.length; i += 1) {
     try {
       await stages[i]();

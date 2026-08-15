@@ -582,6 +582,16 @@ function sizeCanvas() {
 
 // A train is a locomotive and two coaches. The nose leads. Metres run left to
 // right, so the coaches sit behind the nose at lower metre values.
+// Never let a label run off the canvas. A clipped label is invisible to every
+// state-based check — only a screenshot shows it, and one did.
+function fitText(text, x, y) {
+  const w = g.measureText(text).width;
+  let px = x;
+  if (px + w > cssW - 4) px = cssW - 4 - w;
+  if (px < 4) px = 4;
+  g.fillText(text, px, y);
+}
+
 function drawTrain(noseM, y, body, X, scale, tall) {
   if (X(noseM) < -60 || X(noseM - TRAIN_M) > cssW + 60) return;
 
@@ -671,7 +681,7 @@ function drawStation(X, y, tall) {
   g.stroke();
   g.fillStyle = pal.muted;
   g.font = "700 10px ui-monospace, monospace";
-  g.fillText("STATION", a + 12, roofY - 5);
+  fitText("STATION", a + 12, roofY - 5);
 }
 
 function drawRail(y, from, to, X) {
@@ -707,7 +717,7 @@ function drawWarningBoard(X, y, tall) {
   g.stroke();
   g.fillStyle = pal.muted;
   g.font = "800 9px system-ui, sans-serif";
-  g.fillText(K.WARN_BEFORE_M + " M", x + 12, top + 3);
+  fitText(K.WARN_BEFORE_M + " M", x + 12, top + 3);
 }
 
 // The live stop marker: where this train would come to rest if the driver
@@ -827,7 +837,7 @@ function drawScene() {
     g.stroke();
     g.fillStyle = pal.warn;
     g.font = "800 9px system-ui, sans-serif";
-    g.fillText("PLATFORM", px1 + 8, playerY + 18);
+    fitText("PLATFORM", px1 + 8, playerY + 18);
   }
 
   drawRail(rivalY, from, to, X);
