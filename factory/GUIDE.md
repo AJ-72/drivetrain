@@ -18,13 +18,16 @@ The game gives four results:
 | `WIN` | You stop inside the zone, before the rival stops. |
 | `UNDERSHOT` | You stop before the zone. |
 | `OVERSHOT` | You stop after the zone, or you reach the end of the rail. |
-| `RIVAL WINS` | The rival stops first. |
+| `RIVAL WINS` | The rival completes its stop while you are still moving. |
+
+Every result also states its cause in a line beneath it, so a loss explains
+itself.
 
 ## 2. The shape of it
 
 ```
 index.html                 the whole game: markup, style, and script
-test/contract.mjs          20 checks that drive a real browser
+test/contract.mjs          23 checks that drive a real browser
 tools/make-artifact.mjs    strips the outer tags for the Artifact host
 dist/artifact.html         the published copy, built by the script above
 factory/                   the pipeline record: how and why it was built
@@ -42,8 +45,9 @@ Read the file in this order.
    distance, and the fixed time step.
 2. **`S`** — the whole game state, in one object.
 3. **The simulation** — `stepTrain`, `judge`, `step`, `startRace`, `resetRace`.
-4. **The screen** — `render`, `drawScene`, `drawTrain`, `drawStation`,
-   `drawSignal`, and the input handlers.
+4. **The screen** — `render`, `reasonText`, `drawScene`, `drawTrain`,
+   `drawStation`, `drawSignal`, `drawWarningBoard`, `drawStopMarker`,
+   `drawRivalEdge`, and the input handlers.
 
 ## 4. Where the state lives
 
@@ -65,9 +69,11 @@ Nothing else persists. The game sends nothing to any server.
 | How slippery a wet rail is | `K.GRIPS` |
 | How early the warning comes | `K.WARN_BEFORE_M` |
 | How hard the rival answers a lead | `K.RIVAL_BOOST` and `K.RIVAL_BOOST_RANGE_M` |
-| A faster train | `K.THROTTLE_ACCEL`. The player has no top speed. |
+| A stronger shove off the line | `K.PLAYER_FMAX` |
+| More pull at speed | `K.PLAYER_POWER` |
+| A higher natural ceiling | Lower `K.RES_R2` |
 | A stronger brake | `K.BRAKE_DECEL` |
-| A harder rival | Raise `K.RIVAL_MAX_SPEED` or `K.RIVAL_ACCEL` |
+| A harder rival | Raise `K.RIVAL_MAX_SPEED`, `K.RIVAL_POWER`, or `K.RIVAL_FMAX` |
 | A more or less random rival | The gap between `K.RIVAL_MIN_SPEED` and `K.RIVAL_MAX_SPEED` |
 | A kinder early game | `K.ARM_AFTER_M` |
 | A different look | The `:root` tokens in the `<style>` block |
@@ -79,35 +85,37 @@ C11 measures the band of brake points that win. The band must measure between
 
 ## 6. How the numbers fit together
 
-The rival and the player share one physics function, `stepTrain`. It takes the
-acceleration, the brake force, and the speed cap as arguments, so the two trains
-differ only in the numbers passed to it. The player passes `Infinity` as the
-cap. The rival brakes at a point solved from its drawn top speed, so it always
-stops at `K.RIVAL_TARGET_M`.
+The rival and the player share one physics function, `stepTrain`. It takes a
+spec of `{fmax, power, brake}` and a speed cap, so the two trains differ only in
+the numbers passed to it. The player passes `Infinity` as the cap. The rival
+brakes at the last moment its own stopping distance allows, so it stops in the
+middle of the platform whatever speed it holds.
 
-The player has no top speed. The brake uses the same force as the throttle, so
-the brake distance equals the distance already run. The nose stops at exactly
-twice the brake point. That one fact explains the whole feel of the game.
+The player has no written top speed. Tractive effort holds at `PLAYER_FMAX`
+until about 38 m/s, then falls as `PLAYER_POWER / speed`. Resistance rises as
+`RES_R0 + RES_R2 * speed^2`. The two balance near 67 m/s, about 241 km/h. That
+ceiling is the machine, not a cap.
 
-The rail grip scales every brake, so the stop is not always twice the brake
-point:
+Because resistance helps the brake, the stopping distance is **not** the speed
+squared over twice the brake. The exact form is:
 
-| Rail | Grip | Stop, as a multiple of the brake point |
-|---|---|---|
-| DRY | 1.00 | 2.00 |
-| DAMP | 0.80 | 2.25 |
-| WET | 0.65 | 2.54 |
+```
+stopDistance(v) = ln(1 + RES_R2 * v^2 / (brake + RES_R0)) / (2 * RES_R2)
+```
+
+The stop marker reads exactly this. C19 holds it to within 5 m of the true stop
+across nine runs, and measured 1.09 m at worst. If you change the physics, this
+formula must change with it or the marker starts lying.
 
 Measured win bands against the hardest rival, at every station position:
-170 m dry, 150 m damp, 130 m wet. The floor is 120 m.
+180 m to 190 m dry, 170 m to 180 m damp, 160 m to 170 m wet. The floor is 120 m.
 
 A wet rail hurts the player much more than the rival, because the rival spends
 most of its race cruising. Without a correction the wet race is unwinnable, and
-the measured band was 0 m. `RIVAL_RAIL_FACTOR` eases the rival on a wet rail,
-which is also what a real driver does.
+the measured band was 0 m. The factor `0.68 + 0.32 * grip` eases the rival on a
+wet rail, which is what a real driver does.
 
-Widening the platform widens the band by roughly half the change, because the
-stop is about twice the brake point.
+Widening the platform widens the band by roughly three quarters of the change.
 
 Change one number and all of these move. The checks tell you where they land.
 
@@ -125,14 +133,20 @@ Change one number and all of these move. The checks tell you where they land.
 4. **The held input sets.** Each control tracks which sources hold it. A single
    shared boolean lets one finger's release drop another finger's hold. Do not
    simplify `held` back into a boolean.
-5. **The random rival.** Every deterministic check must pin it with
-   `test.start({rivalMax: n})`. An unpinned check is a flaky check.
-6. **The debug object.** `window.__drivetrain` is not a debug extra. Every
+5. **Three random draws.** The station, the rail, and the rival top speed are
+   drawn per race. Every deterministic check must pin all three with
+   `test.start({rivalMax, platformStart, grip})`. An unpinned check is a flaky
+   check.
+6. **The stopping-distance formula.** `stopDistance()` is the exact integral of
+   the brake against a resistance that grows with the square of the speed. The
+   stop marker is the instrument the player drives on. Change the physics and
+   this must change with it, or the marker lies.
+7. **The debug object.** `window.__drivetrain` is not a debug extra. Every
    check reads it. Rename a field and the whole suite fails.
-7. **The Artifact build.** `tools/make-artifact.mjs` removes the outer tags. The
+8. **The Artifact build.** `tools/make-artifact.mjs` removes the outer tags. The
    Artifact host supplies them. Publish `index.html` directly and the page shows
    nothing.
-8. **External references.** The Artifact host blocks every other host. One CDN
+9. **External references.** The Artifact host blocks every other host. One CDN
    link and the page breaks in a way that a local test does not show. Check C8
    guards this.
 
@@ -142,7 +156,7 @@ Change one number and all of these move. The checks tell you where they land.
 node test/contract.mjs
 ```
 
-The command prints one line per check and exits 0 only when all 20 pass. It
+The command prints one line per check and exits 0 only when all 23 pass. It
 needs no install. It reads Playwright from the container path
 `/opt/node22/lib/node_modules`.
 
