@@ -40,9 +40,10 @@ browser and it runs.
 
 Read the file in this order.
 
-1. **`K`** — every constant. Track length, platform bounds, the player's
-   acceleration and brake, the rival's acceleration and speed range, the arming
-   distance, and the fixed time step.
+1. **`K`** — every constant. Track length, the range the station is drawn from,
+   the player's tractive effort and brake, the resistance terms, the rail grips,
+   the rival's power and speed range, the warning distance, the arming distance,
+   and the fixed time step.
 2. **`S`** — the whole game state, in one object.
 3. **The simulation** — `stepTrain`, `judge`, `step`, `startRace`, `resetRace`.
 4. **The screen** — `render`, `reasonText`, `drawScene`, `drawTrain`,
@@ -64,7 +65,7 @@ Nothing else persists. The game sends nothing to any server.
 | You want | Change this |
 |---|---|
 | A longer or shorter race | `K.TRACK_LENGTH_M` |
-| An easier or harder stop | `K.PLATFORM_WIDTH_M`. The band is the width divided by about two. |
+| An easier or harder stop | `K.PLATFORM_WIDTH_M`. The win band is about three quarters of the width. |
 | Where the station can sit | `K.PLATFORM_MIN_START_M` and `K.PLATFORM_MAX_START_M` |
 | How slippery a wet rail is | `K.GRIPS` |
 | How early the warning comes | `K.WARN_BEFORE_M` |
