@@ -1,0 +1,1040 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Drivetrain</title>
+<style>
+/* Identity: railway signalling. Steel neutrals carry a green bias. The three
+   accents are the signal lamps themselves, so colour states the rule it obeys:
+   green go, red stop, amber caution at the platform. */
+:root {
+  --bg:    #dfe5e1;
+  --panel: #f3f6f3;
+  --ink:   #101a16;
+  --muted: #56655d;
+  --edge:  #b6c2ba;
+  --ballast: #cbd3cd;
+  --go:    #157f4c;
+  --stop:  #b8322a;
+  --warn:  #b3790c;
+  --lamp:  #fff6d8;
+  --font-data: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sign: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:    #0d1412;
+    --panel: #16201c;
+    --ink:   #e4ede7;
+    --muted: #8ca096;
+    --edge:  #2a3a33;
+    --ballast: #1d2823;
+    --go:    #2fb870;
+    --stop:  #e2564b;
+    --warn:  #e8a93b;
+    --lamp:  #fff3cc;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:    #0d1412;
+  --panel: #16201c;
+  --ink:   #e4ede7;
+  --muted: #8ca096;
+  --edge:  #2a3a33;
+  --ballast: #1d2823;
+  --go:    #2fb870;
+  --stop:  #e2564b;
+  --warn:  #e8a93b;
+  --lamp:  #fff3cc;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-data);
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+#app {
+  display: flex; flex-direction: column;
+  height: 100%; max-width: 480px; margin: 0 auto;
+  padding: 10px; gap: 10px;
+}
+
+/* the instrument strip */
+#hud {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  background: var(--panel); border: 1px solid var(--edge);
+  border-radius: 4px; overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+#hud .gauge {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 8px; border-left: 1px solid var(--edge);
+  min-width: 0;
+}
+#hud .gauge:nth-child(3n + 1) { border-left: none; }
+#hud .gauge:nth-child(n + 4) { border-top: 1px solid var(--edge); }
+#rail.slippery { color: var(--warn); }
+#stopin.armed { color: var(--go); }
+#stopin.late { color: var(--stop); }
+/* the distant signal call, shown when the train passes the warning board */
+#callout {
+  position: absolute; left: 0; right: 0; top: 10px;
+  display: flex; justify-content: center; pointer-events: none;
+}
+#callout b {
+  font-family: var(--font-sign);
+  font-size: 12px; font-weight: 800; letter-spacing: 0.14em;
+  color: var(--panel); background: var(--warn);
+  padding: 5px 12px; border-radius: 3px;
+}
+#callout:empty { display: none; }
+#hud .gauge span {
+  font-family: var(--font-sign);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.11em;
+  color: var(--muted); text-transform: uppercase; white-space: nowrap;
+}
+#hud .gauge b {
+  font-size: 14px; font-weight: 700; color: var(--ink);
+  letter-spacing: -0.01em; white-space: nowrap;
+}
+
+#stage {
+  position: relative; flex: 0 0 auto;
+  height: 42vh; min-height: 180px;
+}
+#scene {
+  display: block; width: 100%; height: 100%;
+  background: var(--panel);
+  border: 1px solid var(--edge); border-radius: 4px;
+}
+#overlay {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px;
+  pointer-events: none; text-align: center;
+}
+/* the result reads as an enamel station sign */
+#result {
+  font-family: var(--font-sign);
+  font-size: clamp(26px, 8vw, 40px); font-weight: 800;
+  letter-spacing: 0.02em; text-wrap: balance;
+  padding: 6px 18px; border-radius: 3px;
+  background: var(--ink); color: var(--panel);
+}
+#result:empty { display: none; }
+#reason {
+  font-family: var(--font-sign);
+  font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--ink); background: var(--panel);
+  padding: 3px 10px; border-radius: 3px;
+}
+#reason:empty { display: none; }
+#callout b.urgent { background: var(--stop); }
+#newbest {
+  font-family: var(--font-sign);
+  font-size: 11px; font-weight: 800; letter-spacing: 0.16em;
+  color: var(--warn); text-transform: uppercase;
+}
+
+/* the control desk */
+#controls { display: flex; gap: 10px; flex: 1 1 auto; }
+#controls button {
+  position: relative;
+  flex: 1 1 0; min-width: 64px; min-height: 120px;
+  font-family: var(--font-sign);
+  font-size: 15px; font-weight: 800; letter-spacing: 0.14em;
+  color: var(--ink); background: var(--panel);
+  border: 1px solid var(--edge); border-radius: 4px;
+  border-bottom-width: 4px;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+/* the lamp on each lever */
+#controls button::before {
+  content: ""; position: absolute; top: 12px; left: 50%;
+  width: 14px; height: 14px; margin-left: -7px; border-radius: 50%;
+  background: var(--edge);
+}
+#brake::before { box-shadow: none; }
+#brake.on { border-color: var(--stop); color: var(--stop); }
+#brake.on::before { background: var(--stop); box-shadow: 0 0 0 4px color-mix(in srgb, var(--stop) 22%, transparent); }
+#throttle.on { border-color: var(--go); color: var(--go); }
+#throttle.on::before { background: var(--go); box-shadow: 0 0 0 4px color-mix(in srgb, var(--go) 22%, transparent); }
+#controls button:focus-visible, #start:focus-visible {
+  outline: 3px solid var(--warn); outline-offset: 2px;
+}
+#start {
+  min-height: 64px;
+  font-family: var(--font-sign);
+  font-size: 15px; font-weight: 800; letter-spacing: 0.16em;
+  color: var(--panel); background: var(--ink);
+  border: none; border-radius: 4px; touch-action: none;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="gauge"><span>Best</span><b id="best">--</b></div>
+    <div class="gauge"><span>Time</span><b id="time">0.00s</b></div>
+    <div class="gauge"><span>Rail</span><b id="rail">DRY</b></div>
+    <div class="gauge"><span>You km/h</span><b id="speed">0</b></div>
+    <div class="gauge"><span>Platform in</span><b id="togo">-- m</b></div>
+    <div class="gauge"><span>Stop needs</span><b id="stopin">0 m</b></div>
+  </div>
+  <div id="stage">
+    <canvas id="scene"></canvas>
+    <div id="callout"></div>
+    <div id="overlay">
+      <div id="result"></div>
+      <div id="reason"></div>
+      <div id="newbest"></div>
+    </div>
+  </div>
+  <div id="controls">
+    <button id="brake" data-control="brake" type="button">BRAKE</button>
+    <button id="throttle" data-control="throttle" type="button">THROTTLE</button>
+  </div>
+  <button id="start" type="button">START</button>
+</div>
+<script>
+"use strict";
+
+const K = {
+  TRACK_LENGTH_M:     2000,
+
+  // The station moves for every race. A memorised brake point does not work.
+  // The player must judge from the speed, the distance left, and the rail.
+  PLATFORM_WIDTH_M:      240,
+  PLATFORM_MIN_START_M: 1300,
+  PLATFORM_MAX_START_M: 1520,
+
+  // A real machine does not pull the same at 20 km/h and at 200. Tractive
+  // effort holds flat while adhesion limits it, then falls as power over speed.
+  // Resistance rises with the square of the speed. Together they give the shape
+  // a driver feels: a shove off the line, a long taper, and a speed where the
+  // pull and the drag balance. No cap is written anywhere; the ceiling is the
+  // machine running out of breath.
+  PLAYER_FMAX:        2.5,   // metres per second squared, off the line
+  PLAYER_POWER:        95,   // the pull equals POWER / speed once past the corner
+  BRAKE_DECEL:        2.5,   // scaled by the rail grip
+  RES_R0:            0.06,   // rolling resistance
+  RES_R2:        0.00028,    // air resistance, per speed squared
+
+  // The rail condition is drawn for each race and it scales every brake, for
+  // both trains. A wet rail carries the train much further.
+  GRIPS: [
+    { name: "DRY",  g: 1.00 },
+    { name: "DAMP", g: 0.80 },
+    { name: "WET",  g: 0.65 }
+  ],
+
+  // The rival accelerates harder than the player, holds a top speed drawn for
+  // each race, and pushes harder when the player leads. Its speed never passes
+  // RIVAL_HARD_CAP. It brakes when its own braking distance demands it.
+  RIVAL_FMAX:          4.0,
+  RIVAL_POWER:         120,
+  RIVAL_BRAKE:         4.0,
+  RIVAL_MIN_SPEED:     28,
+  RIVAL_MAX_SPEED:     33,
+  RIVAL_BOOST:          3,   // extra top speed when the player is clear ahead
+  RIVAL_BOOST_RANGE_M: 300,  // the lead at which the boost is full
+  RIVAL_HARD_CAP:      36,   // the absolute upper limit on the rival
+
+  WARN_BEFORE_M:      400,   // the distant signal stands this far out
+  ARM_AFTER_M:         50,   // a stop before this does not end the race
+  STOP_EPSILON:      0.05,
+  FIXED_DT:          1 / 60,
+  MAX_FRAME_DELTA_MS:  50,
+  STEP_MS:       1000 / 60
+};
+
+const S = {
+  state: "IDLE",
+  result: null,
+  playerPos: 0, playerSpeed: 0, playerArmed: false,
+  rivalPos: 0,  rivalSpeed: 0,  rivalArmed: false, rivalDone: false,
+  rivalMax: 0,  rivalBase: 0, rivalTargetM: 0, rivalBraking: false,
+  endSpeed: 0,
+  platformStart: 0, platformEnd: 0, warnAtM: 0, passedWarn: false,
+  gripName: "DRY", grip: 1,
+  forcedRivalMax: null, forcedPlatformStart: null, forcedGrip: null,
+  steps: 0, elapsedMs: 0,
+  bestMs: null, newBest: false, bestSaved: true,
+  input: { throttle: false, brake: false }
+};
+
+function resistance(v) { return K.RES_R0 + K.RES_R2 * v * v; }
+
+// The exact distance to a standstill under a constant brake plus a resistance
+// that grows with the square of the speed. The stop marker reads this, so it
+// must be the true integral, not an approximation.
+function stopDistance(v, decel) {
+  const b = decel + K.RES_R0;
+  if (v <= 0) return 0;
+  return Math.log(1 + (K.RES_R2 * v * v) / b) / (2 * K.RES_R2);
+}
+
+function stepTrain(train, throttle, brake, spec, cap) {
+  const v = train.speed;
+  const res = resistance(v);
+  let a;
+  if (brake)         a = -(spec.brake * S.grip) - res;
+  else if (throttle) a =  Math.min(spec.fmax, spec.power / Math.max(v, 1)) - res;
+  else               a = -res;
+
+  // The train moves first, then the speed changes. This order matches the
+  // arithmetic in BRIEF.md section 3. The reverse order shortens every brake
+  // and the canonical win stops short of the platform.
+  train.pos += train.speed * K.FIXED_DT;
+  train.speed += a * K.FIXED_DT;
+  if (train.speed > cap) train.speed = cap;
+  if (a < 0 && train.speed < K.STOP_EPSILON) train.speed = 0;
+  if (train.speed < 0) train.speed = 0;
+}
+
+// How far this train needs to stop from its current speed, on this rail.
+function brakeDistance(speed, decel) {
+  return stopDistance(speed, decel * S.grip);
+}
+
+function finish(result) {
+  S.endSpeed = S.playerSpeed;
+  S.result = result;
+  S.state = "RESULT";
+  if (result === "WIN") recordBest(S.elapsedMs);
+  render();   // the screen must show the result on the same step
+}
+
+function judge() {
+  if (S.playerPos >= K.TRACK_LENGTH_M) {
+    S.playerPos = K.TRACK_LENGTH_M;
+    S.playerSpeed = 0;
+    finish("OVERSHOT");
+    return true;
+  }
+  // The judge arms on distance, not on any motion at all. A player who taps
+  // the throttle and hesitates must not lose the race at one metre.
+  if (S.playerArmed && S.playerSpeed === 0) {
+    if (S.playerPos < S.platformStart)         finish("UNDERSHOT");
+    else if (S.playerPos > S.platformEnd)      finish("OVERSHOT");
+    else                                        finish("WIN");
+    return true;
+  }
+  return false;
+}
+
+function step() {
+  if (S.state !== "RACING") return;
+
+  S.steps += 1;
+  S.elapsedMs = Math.round(S.steps * K.STEP_MS);
+
+  const p = { pos: S.playerPos, speed: S.playerSpeed };
+  stepTrain(p, S.input.throttle && !S.input.brake, S.input.brake,
+            { fmax: K.PLAYER_FMAX, power: K.PLAYER_POWER, brake: K.BRAKE_DECEL },
+            Infinity);
+  S.playerPos = p.pos; S.playerSpeed = p.speed;
+  if (S.playerPos > K.ARM_AFTER_M) S.playerArmed = true;
+  if (S.playerPos >= S.warnAtM) S.passedWarn = true;
+
+  if (!S.rivalDone) {
+    const r = { pos: S.rivalPos, speed: S.rivalSpeed };
+    // The rival pushes when the player pulls clear, up to a hard limit.
+    const lead = S.playerPos - S.rivalPos;
+    const push = Math.max(0, Math.min(1, lead / K.RIVAL_BOOST_RANGE_M)) * K.RIVAL_BOOST;
+    // A driver eases off on a wet rail. Without this the rival barely slows,
+    // because its time is mostly cruising, and the wet race becomes unwinnable.
+    const railFactor = 0.68 + 0.32 * S.grip;
+    S.rivalMax = Math.min(S.rivalBase + push, K.RIVAL_HARD_CAP) * railFactor;
+    // It brakes at the last moment its own stopping distance allows.
+    const braking = (S.rivalTargetM - r.pos) <= brakeDistance(r.speed, K.RIVAL_BRAKE);
+    if (braking) S.rivalBraking = true;
+    stepTrain(r, !braking, braking,
+              { fmax: K.RIVAL_FMAX, power: K.RIVAL_POWER, brake: K.RIVAL_BRAKE },
+              S.rivalMax);
+    S.rivalPos = r.pos; S.rivalSpeed = r.speed;
+    if (S.rivalSpeed > 0) S.rivalArmed = true;
+    if (S.rivalArmed && S.rivalSpeed === 0) S.rivalDone = true;
+  }
+
+  // The player is judged first. A stop on the same step wins.
+  if (judge()) return;
+  if (S.rivalDone) finish("RIVAL WINS");
+}
+
+function startRace() {
+  S.state = "RACING";
+  S.result = null;
+  S.playerPos = 0; S.playerSpeed = 0; S.playerArmed = false;
+  S.rivalPos = 0;  S.rivalSpeed = 0;  S.rivalArmed = false; S.rivalDone = false;
+  // A fresh station, a fresh rail, and a fresh rival for every race.
+  S.platformStart = S.forcedPlatformStart !== null
+    ? S.forcedPlatformStart
+    : Math.round(K.PLATFORM_MIN_START_M
+        + Math.random() * (K.PLATFORM_MAX_START_M - K.PLATFORM_MIN_START_M));
+  S.platformEnd = S.platformStart + K.PLATFORM_WIDTH_M;
+  S.rivalTargetM = S.platformStart + K.PLATFORM_WIDTH_M / 2;
+  S.warnAtM = S.platformStart - K.WARN_BEFORE_M;
+  S.passedWarn = false;
+  S.rivalBraking = false;
+  S.endSpeed = 0;
+
+  const grip = S.forcedGrip !== null
+    ? (K.GRIPS.find((x) => x.name === S.forcedGrip) || K.GRIPS[0])
+    : K.GRIPS[Math.floor(Math.random() * K.GRIPS.length)];
+  S.gripName = grip.name;
+  S.grip = grip.g;
+
+  S.rivalBase = S.forcedRivalMax !== null
+    ? S.forcedRivalMax
+    : K.RIVAL_MIN_SPEED + Math.random() * (K.RIVAL_MAX_SPEED - K.RIVAL_MIN_SPEED);
+  S.rivalMax = S.rivalBase;
+
+  S.steps = 0; S.elapsedMs = 0; S.newBest = false; S.bestSaved = true;
+  // Do not blank the input. A lever that the player still holds must stay
+  // engaged into the new race. applyHeld() reads the live held sets.
+  applyHeld();
+}
+
+function resetRace() {
+  startRace();
+  S.state = "IDLE";
+}
+
+function setInput(next) {
+  if (!next || typeof next !== "object") return;
+  if (typeof next.throttle === "boolean") S.input.throttle = next.throttle;
+  if (typeof next.brake === "boolean")    S.input.brake = next.brake;
+}
+
+// ------------------------------------------------------------ the best time
+// A storage error must never stop the game.
+
+const BEST_KEY = "drivetrain.bestMs";
+
+// A stored value must survive Number() coercion tricks. "1e5", " 12 ", and
+// "0x10" all coerce to a number, and a best of 12 ms can never be beaten.
+const BEST_MIN_MS = 1000;
+const BEST_MAX_MS = 3600000;
+
+function readBest() {
+  try {
+    const raw = window.localStorage.getItem(BEST_KEY);
+    if (typeof raw !== "string") return null;
+    const text = raw.trim();
+    if (!/^\d{1,12}$/.test(text)) return null;
+    const n = Number(text);
+    if (!Number.isInteger(n)) return null;
+    if (n < BEST_MIN_MS || n > BEST_MAX_MS) return null;
+    return n;
+  } catch (e) { return null; }
+}
+
+function writeBest(ms) {
+  try {
+    window.localStorage.setItem(BEST_KEY, String(ms));
+    return true;
+  } catch (e) { return false; }
+}
+
+function recordBest(ms) {
+  if (S.bestMs === null || ms < S.bestMs) {
+    S.bestMs = ms;
+    S.newBest = true;
+    S.bestSaved = writeBest(ms);   // the screen must not claim a save that failed
+  }
+}
+
+S.bestMs = readBest();
+
+// ---------------------------------------------------------------- rendering
+// render() reads the state. render() never writes the state.
+
+const el = {
+  best:    document.getElementById("best"),
+  time:    document.getElementById("time"),
+  result:  document.getElementById("result"),
+  newbest: document.getElementById("newbest"),
+  start:   document.getElementById("start"),
+  brake:   document.getElementById("brake"),
+  throttle: document.getElementById("throttle"),
+  speed:   document.getElementById("speed"),
+  rail:    document.getElementById("rail"),
+  stopin:  document.getElementById("stopin"),
+  callout: document.getElementById("callout"),
+  reason:  document.getElementById("reason"),
+  togo:    document.getElementById("togo"),
+  scene:   document.getElementById("scene")
+};
+
+function secs(ms) { return (ms / 1000).toFixed(2) + "s"; }
+
+// A result names the winner. It must also name the cause, or a loss teaches
+// nothing. None of these lines may contain another result word.
+function reasonText() {
+  if (S.state !== "RESULT") return "";
+  const m = (v) => Math.round(v) + " m";
+  if (S.result === "WIN") {
+    return "stopped " + m(S.playerPos - S.platformStart) + " into the platform";
+  }
+  if (S.result === "UNDERSHOT") {
+    return "stopped " + m(S.platformStart - S.playerPos) + " short of the platform";
+  }
+  if (S.result === "OVERSHOT") {
+    if (S.playerPos >= K.TRACK_LENGTH_M) return "ran out of track";
+    return "ran " + m(S.playerPos - S.platformEnd) + " past the platform";
+  }
+  if (S.endSpeed < 1) return "the rival stopped while you stood still";
+  return "you were still moving at " + Math.round(S.endSpeed * 3.6) + " km/h";
+}
+
+function setText(node, text) {
+  if (node && node.textContent !== text) node.textContent = text;
+}
+
+function render() {
+  setText(el.time, secs(S.elapsedMs));
+  setText(el.best, S.bestMs === null ? "--" : secs(S.bestMs));
+  setText(el.result, S.state === "RESULT" ? S.result : "");
+  setText(el.reason, reasonText());
+  setText(el.newbest, S.state === "RESULT" && S.newBest
+    ? (S.bestSaved ? "NEW BEST" : "NEW BEST (NOT SAVED)")
+    : "");
+  setText(el.start, S.state === "RACING" ? "RESTART" : "START");
+  setText(el.speed, String(Math.round(S.playerSpeed * 3.6)));
+  setText(el.rail, S.gripName);
+  if (el.rail) el.rail.classList.toggle("slippery", S.grip < 1);
+
+  // The two numbers a driver actually compares: how far the platform is, and
+  // how far this train needs to stop.
+  const toPlatform = S.platformStart - S.playerPos;
+  const needs = brakeDistance(S.playerSpeed, K.BRAKE_DECEL);
+  const known = S.state !== "IDLE" && S.passedWarn;
+  setText(el.togo, known ? Math.max(0, Math.round(toPlatform)) + " m" : "-- m");
+  setText(el.stopin, Math.round(needs) + " m");
+  if (el.stopin) {
+    const inside = S.playerPos + needs >= S.platformStart
+                && S.playerPos + needs <= S.platformEnd;
+    el.stopin.classList.toggle("armed", S.state === "RACING" && inside);
+    el.stopin.classList.toggle("late", S.state === "RACING" && S.playerPos + needs > S.platformEnd);
+  }
+  if (el.callout) {
+    const racing = S.state === "RACING";
+    if (racing && S.rivalBraking) {
+      el.callout.innerHTML = "<b class=\"urgent\">RIVAL IS STOPPING &middot; BRING IT TO A STAND</b>";
+    } else if (racing && S.passedWarn && S.playerPos < S.platformStart) {
+      el.callout.innerHTML =
+        "<b>DISTANT SIGNAL &middot; PLATFORM " + Math.max(0, Math.round(toPlatform)) + " M</b>";
+    } else {
+      el.callout.innerHTML = "";
+    }
+  }
+  if (el.throttle) el.throttle.classList.toggle("on", S.input.throttle);
+  if (el.brake) el.brake.classList.toggle("on", S.input.brake);
+  drawScene();
+}
+
+// ------------------------------------------------------------- the scene
+// All art is code. The page loads no image file.
+
+const VIEW_M = 260;      // metres across the canvas width
+const NOSE_X = 0.35;     // the player nose sits here, as a fraction of width
+const TRAIN_M = 30;      // the length of a train, in metres
+
+const g = el.scene ? el.scene.getContext("2d") : null;
+let cssW = 0, cssH = 0, dpr = 0, pal = null;
+
+function readPalette() {
+  // A host that scopes custom properties differently returns "". A canvas
+  // ignores an empty fillStyle and keeps the previous colour, so the scene
+  // would render black on black with nothing logged. Every token has a hex
+  // fallback for that reason.
+  const s = getComputedStyle(document.documentElement);
+  const get = (n, fb) => s.getPropertyValue(n).trim() || fb;
+  return {
+    ink:     get("--ink", "#101a16"),
+    muted:   get("--muted", "#56655d"),
+    edge:    get("--edge", "#b6c2ba"),
+    panel:   get("--panel", "#f3f6f3"),
+    bg:      get("--bg", "#dfe5e1"),
+    ballast: get("--ballast", "#cbd3cd"),
+    go:      get("--go", "#157f4c"),
+    stop:    get("--stop", "#b8322a"),
+    warn:    get("--warn", "#b3790c"),
+    lamp:    get("--lamp", "#fff6d8")
+  };
+}
+
+function sizeCanvas() {
+  const w = el.scene.clientWidth;
+  const h = el.scene.clientHeight;
+  const d = window.devicePixelRatio || 1;
+  if (w === 0 || h === 0) { cssW = 0; cssH = 0; return; }   // never cache zero
+  if (w === cssW && h === cssH && d === dpr) return;
+  cssW = w; cssH = h; dpr = d;
+  el.scene.width = Math.max(1, Math.round(w * d));
+  el.scene.height = Math.max(1, Math.round(h * d));
+  pal = readPalette();
+}
+
+// A train is a locomotive and two coaches. The nose leads. Metres run left to
+// right, so the coaches sit behind the nose at lower metre values.
+// Never let a label run off the canvas. A clipped label is invisible to every
+// state-based check — only a screenshot shows it, and one did.
+function fitText(text, x, y) {
+  const w = g.measureText(text).width;
+  let px = x;
+  if (px + w > cssW - 4) px = cssW - 4 - w;
+  if (px < 4) px = 4;
+  g.fillText(text, px, y);
+}
+
+function drawTrain(noseM, y, body, X, scale, tall) {
+  if (X(noseM) < -60 || X(noseM - TRAIN_M) > cssW + 60) return;
+
+  const box = (m1, m2, h, colour) => {
+    g.fillStyle = colour;
+    g.fillRect(X(m1), y - h, X(m2) - X(m1), h);
+  };
+  const wheels = (m1, m2, count) => {
+    g.fillStyle = pal.ink;
+    const r = Math.max(1.4, tall * 0.10);
+    for (let i = 0; i < count; i += 1) {
+      const m = m1 + ((m2 - m1) * (i + 0.5)) / count;
+      g.beginPath(); g.arc(X(m), y - r * 0.6, r, 0, Math.PI * 2); g.fill();
+    }
+  };
+  const windows = (m1, m2, count) => {
+    g.fillStyle = pal.panel;
+    const span = (m2 - m1) / count;
+    for (let i = 0; i < count; i += 1) {
+      const a = m1 + span * i + span * 0.25;
+      g.fillRect(X(a), y - tall * 0.80, Math.max(1.5, X(a + span * 0.5) - X(a)), tall * 0.32);
+    }
+  };
+
+  // two coaches, then the locomotive at the front
+  box(noseM - 30, noseM - 22, tall * 0.86, body);
+  windows(noseM - 30, noseM - 22, 3);
+  wheels(noseM - 30, noseM - 22, 2);
+
+  box(noseM - 21, noseM - 13, tall * 0.86, body);
+  windows(noseM - 21, noseM - 13, 3);
+  wheels(noseM - 21, noseM - 13, 2);
+
+  // the locomotive: a long hood, a tall cab behind it, and a chimney
+  box(noseM - 12, noseM - 1, tall * 0.72, body);
+  box(noseM - 12, noseM - 7, tall * 1.20, body);
+  windows(noseM - 11.5, noseM - 7.5, 1);
+  box(noseM - 4.5, noseM - 3, tall * 1.05, body);      // the chimney
+  wheels(noseM - 12, noseM - 1, 3);
+
+  // the nose slope
+  g.fillStyle = body;
+  g.beginPath();
+  g.moveTo(X(noseM - 1), y - tall * 0.72);
+  g.lineTo(X(noseM), y - tall * 0.34);
+  g.lineTo(X(noseM), y);
+  g.lineTo(X(noseM - 1), y);
+  g.closePath();
+  g.fill();
+
+  // the head lamp
+  g.fillStyle = pal.lamp;
+  g.fillRect(X(noseM - 1.2), y - tall * 0.62, Math.max(1.5, X(noseM - 0.4) - X(noseM - 1.2)), tall * 0.16);
+}
+
+// A signal stands at the platform start. The lamp states the rule: green while
+// the platform is ahead, amber inside the zone, red beyond it.
+function drawSignal(X, y, tall) {
+  const x = X(S.platformStart) - 14;
+  if (x < -20 || x > cssW + 20) return;
+  const top = y - tall * 3.1;
+  g.strokeStyle = pal.edge;
+  g.lineWidth = 2;
+  g.beginPath(); g.moveTo(x, y); g.lineTo(x, top); g.stroke();
+  g.fillStyle = pal.panel;
+  g.strokeStyle = pal.edge;
+  g.fillRect(x - 5, top - 16, 10, 16);
+  g.strokeRect(x - 5, top - 16, 10, 16);
+  let lamp = pal.go;
+  if (S.playerPos > S.platformEnd) lamp = pal.stop;
+  else if (S.playerPos >= S.warnAtM) lamp = pal.warn;
+  g.fillStyle = lamp;
+  g.beginPath(); g.arc(x, top - 8, 3.4, 0, Math.PI * 2); g.fill();
+}
+
+function drawStation(X, y, tall) {
+  const a = X(S.platformStart);
+  const b = X(S.platformEnd);
+  if (b < -40 || a > cssW + 40) return;
+  const roofY = y - tall * 2.6;
+  g.strokeStyle = pal.edge;
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(a, roofY); g.lineTo(b, roofY);
+  g.moveTo(a + 6, roofY); g.lineTo(a + 6, y - tall * 1.3);
+  g.moveTo(b - 6, roofY); g.lineTo(b - 6, y - tall * 1.3);
+  g.stroke();
+  g.fillStyle = pal.muted;
+  g.font = "700 10px ui-monospace, monospace";
+  fitText("STATION", a + 12, roofY - 5);
+}
+
+function drawRail(y, from, to, X) {
+  g.strokeStyle = pal.edge;
+  g.lineWidth = 2;
+  g.beginPath(); g.moveTo(X(from), y); g.lineTo(X(to), y); g.stroke();
+  g.lineWidth = 1;
+  const first = Math.floor(from / 10) * 10;
+  for (let m = first; m <= to; m += 10) {
+    const x = X(m);
+    g.beginPath(); g.moveTo(x, y - 4); g.lineTo(x, y + 4); g.stroke();
+  }
+}
+
+// The distant signal: a board that warns the driver the platform is coming.
+function drawWarningBoard(X, y, tall) {
+  const x = X(S.warnAtM);
+  if (x < -30 || x > cssW + 30) return;
+  const top = y - tall * 2.2;
+  g.strokeStyle = pal.edge;
+  g.lineWidth = 2;
+  g.beginPath(); g.moveTo(x, y); g.lineTo(x, top); g.stroke();
+
+  // an amber diamond, the shape a driver reads as "be ready to stop"
+  const r = 9;
+  g.beginPath();
+  g.moveTo(x, top - r); g.lineTo(x + r, top);
+  g.lineTo(x, top + r); g.lineTo(x - r, top);
+  g.closePath();
+  g.fillStyle = S.playerPos >= S.warnAtM ? pal.warn : pal.panel;
+  g.fill();
+  g.strokeStyle = pal.warn;
+  g.stroke();
+  g.fillStyle = pal.muted;
+  g.font = "800 9px system-ui, sans-serif";
+  fitText(K.WARN_BEFORE_M + " M", x + 12, top + 3);
+}
+
+// The live stop marker: where this train would come to rest if the driver
+// braked now, on this rail. Brake when the marker sits in the platform band.
+function drawStopMarker(X, y, tall) {
+  if (S.state !== "RACING" || S.playerSpeed <= 0) return;
+  const stopAt = S.playerPos + brakeDistance(S.playerSpeed, K.BRAKE_DECEL);
+  const inside = stopAt >= S.platformStart && stopAt <= S.platformEnd;
+  const colour = inside ? pal.go : (stopAt > S.platformEnd ? pal.stop : pal.muted);
+  let x = X(stopAt);
+
+  // When the marker runs off the screen the driver still needs it, so pin an
+  // arrow to the edge and state how far past the view the train would run.
+  if (x > cssW - 6) {
+    g.fillStyle = colour;
+    g.beginPath();
+    g.moveTo(cssW - 4, y - tall * 1.2);
+    g.lineTo(cssW - 16, y - tall * 1.2 - 7);
+    g.lineTo(cssW - 16, y - tall * 1.2 + 7);
+    g.closePath(); g.fill();
+    g.font = "800 9px system-ui, sans-serif";
+    const label = "STOP " + Math.round(stopAt) + " M";
+    g.fillText(label, cssW - 20 - g.measureText(label).width, y - tall * 1.2 + 3);
+    return;
+  }
+  if (x < -30) return;
+  g.strokeStyle = colour;
+  g.lineWidth = 2;
+  g.setLineDash([4, 3]);
+  g.beginPath(); g.moveTo(x, y - tall * 1.7); g.lineTo(x, y + 6); g.stroke();
+  g.setLineDash([]);
+  g.fillStyle = colour;
+  g.beginPath();
+  g.moveTo(x - 5, y - tall * 1.7); g.lineTo(x + 5, y - tall * 1.7);
+  g.lineTo(x, y - tall * 1.7 + 7);
+  g.closePath(); g.fill();
+}
+
+// A driver reads a rival by eye, not from its instruments. When the rival
+// leaves the camera, the track carries an arrow at that edge instead.
+function drawRivalEdge(X, y, tall) {
+  if (S.state === "IDLE") return;
+  const x = X(S.rivalPos);
+  if (x >= -10 && x <= cssW + 10) return;
+  const ahead = x > cssW;
+  const gap = Math.abs(Math.round(S.rivalPos - S.playerPos));
+  const colour = ahead ? pal.stop : pal.go;
+  const ex = ahead ? cssW - 6 : 6;
+  const dir = ahead ? 1 : -1;
+  g.fillStyle = colour;
+  g.beginPath();
+  g.moveTo(ex, y - tall * 0.6);
+  g.lineTo(ex - dir * 11, y - tall * 0.6 - 7);
+  g.lineTo(ex - dir * 11, y - tall * 0.6 + 7);
+  g.closePath(); g.fill();
+  g.font = "800 9px system-ui, sans-serif";
+  const text = gap + " M";
+  const w = g.measureText(text).width;
+  g.fillStyle = pal.panel;
+  g.fillRect(ahead ? ex - 15 - w - 3 : ex + 15 - 3, y - tall * 0.6 - 13, w + 6, 12);
+  g.fillStyle = colour;
+  g.fillText(text, ahead ? ex - 15 - w : ex + 15, y - tall * 0.6 - 4);
+}
+
+function drawScene() {
+  if (!g || !el.scene) return;
+  sizeCanvas();
+  if (cssW === 0 || cssH === 0) return;
+
+  const W = cssW, H = cssH;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+
+  const camMin = -30;
+  const camMax = K.TRACK_LENGTH_M + 60 - VIEW_M;
+  let camX = S.playerPos - VIEW_M * NOSE_X;
+  if (camX < camMin) camX = camMin;
+  if (camX > camMax) camX = camMax;
+
+  const scale = W / VIEW_M;
+  const X = (m) => (m - camX) * scale;
+  const from = camX - 20;
+  const to = camX + VIEW_M + 20;
+
+  const rivalY = H * 0.36;
+  const playerY = H * 0.82;
+  const tall = Math.max(11, Math.min(22, H * 0.10));
+
+  // ballast under each rail, so the scene reads as two lanes of track
+  g.fillStyle = pal.ballast;
+  g.fillRect(0, rivalY, W, Math.max(6, tall * 0.42));
+  g.fillRect(0, playerY, W, Math.max(6, tall * 0.42));
+
+  // the platform band, on the player track only
+  const px1 = X(S.platformStart);
+  const px2 = X(S.platformEnd);
+  if (px2 > -20 && px1 < W + 20) {
+    g.globalAlpha = 0.14;
+    g.fillStyle = pal.warn;
+    g.fillRect(px1, playerY - tall - 10, px2 - px1, tall + 16);
+    g.globalAlpha = 1;
+    // the painted platform edge: an amber stripe with warning hatching
+    g.fillStyle = pal.warn;
+    g.fillRect(px1, playerY - tall - 12, px2 - px1, 3);
+    g.save();
+    g.beginPath(); g.rect(px1, playerY - tall - 12, px2 - px1, 3); g.clip();
+    g.strokeStyle = pal.ink; g.lineWidth = 2;
+    for (let hx = px1 - 6; hx < px2 + 6; hx += 7) {
+      g.beginPath(); g.moveTo(hx, playerY - tall - 12); g.lineTo(hx + 5, playerY - tall - 9); g.stroke();
+    }
+    g.restore();
+    g.strokeStyle = pal.warn;
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(px1, playerY - tall - 12); g.lineTo(px1, playerY + 6);
+    g.moveTo(px2, playerY - tall - 12); g.lineTo(px2, playerY + 6);
+    g.stroke();
+    g.fillStyle = pal.warn;
+    g.font = "800 9px system-ui, sans-serif";
+    fitText("PLATFORM", px1 + 8, playerY + 18);
+  }
+
+  drawRail(rivalY, from, to, X);
+  drawRail(playerY, from, to, X);
+
+  // the end of the rail
+  const endX = X(K.TRACK_LENGTH_M);
+  if (endX > -20 && endX < W + 20) {
+    g.strokeStyle = pal.ink; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(endX, playerY - tall - 12); g.lineTo(endX, playerY + 6); g.stroke();
+  }
+
+  // distance markers every 100 m
+  g.fillStyle = pal.muted;
+  g.font = "10px ui-monospace, monospace";
+  g.textBaseline = "alphabetic";
+  const firstMark = Math.ceil(from / 100) * 100;
+  for (let m = firstMark; m <= to; m += 100) {
+    if (m < 0 || m > K.TRACK_LENGTH_M) continue;
+    const label = String(m);
+    const lx = X(m) + 2;
+    if (lx < 2) continue;                                    // never clip
+    if (lx + g.measureText(label).width > W - 2) continue;
+    g.fillText(label, lx, H - 4);
+  }
+
+  // the lane labels sit on a small ground of their own, so trackside furniture
+  // never runs through them
+  g.font = "800 9px system-ui, sans-serif";
+  const label = (text, y, colour) => {
+    const w = g.measureText(text).width;
+    g.fillStyle = pal.panel;
+    g.fillRect(4, y - 9, w + 6, 12);
+    g.fillStyle = colour;
+    g.fillText(text, 7, y);
+  };
+  label("RIVAL", rivalY - tall - 8, pal.muted);
+  label("YOU", playerY - tall * 2.6 - 6, pal.go);
+
+  drawStation(X, playerY, tall);
+  drawWarningBoard(X, playerY, tall);
+  drawSignal(X, playerY, tall);
+  drawStopMarker(X, playerY, tall);
+  drawTrain(S.rivalPos, rivalY, pal.muted, X, scale, tall);
+  drawRivalEdge(X, rivalY, tall);
+  drawTrain(S.playerPos, playerY, pal.go, X, scale, tall);
+}
+
+window.addEventListener("resize", () => { cssW = 0; drawScene(); });
+
+// ------------------------------------------------------------------- input
+// Touch and keys both call setInput(). They share one path.
+
+function uiStart() {
+  manual = false;              // the real animation loop owns the clock again
+  S.forcedRivalMax = null;     // a human race always draws a fresh station,
+  S.forcedPlatformStart = null; // a fresh rail, and a fresh rival
+  S.forcedGrip = null;
+  lastFrameMs = 0;
+  accMs = 0;
+  if (S.state === "RACING") resetRace(); else startRace();
+  render();
+}
+
+// Each control tracks WHICH sources hold it, not merely that something does.
+// A single shared boolean lets one source's release clear another source's
+// hold: a second finger lifting would drop the first finger's throttle, and a
+// key release would drop a touch hold.
+const held = { throttle: new Set(), brake: new Set() };
+
+function applyHeld() {
+  setInput({ throttle: held.throttle.size > 0, brake: held.brake.size > 0 });
+}
+
+function press(name, token) { held[name].add(token); applyHeld(); }
+function release(name, token) { held[name].delete(token); applyHeld(); }
+
+function releaseAllPointers(name) {
+  for (const token of Array.from(held[name])) {
+    if (token.slice(0, 4) === "ptr:") held[name].delete(token);
+  }
+  applyHeld();
+}
+
+function bindControl(node, name) {
+  if (!node) return;
+  node.addEventListener("pointerdown", (e) => {
+    if (e.cancelable) e.preventDefault();
+    press(name, "ptr:" + e.pointerId);
+  });
+  for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+    node.addEventListener(type, (e) => release(name, "ptr:" + e.pointerId));
+  }
+  // A touch event carries no pointerId. Drop every pointer hold on this lever.
+  node.addEventListener("touchcancel", () => releaseAllPointers(name));
+  node.addEventListener("touchend", () => releaseAllPointers(name));
+}
+
+bindControl(el.throttle, "throttle");
+bindControl(el.brake, "brake");
+
+if (el.start) {
+  el.start.addEventListener("pointerdown", (e) => {
+    if (e.cancelable) e.preventDefault();
+    uiStart();
+  });
+}
+
+const KEY_MAP = {
+  ArrowUp: "throttle", w: "throttle", W: "throttle",
+  ArrowDown: "brake",  s: "brake",    S: "brake"
+};
+
+// The game must never swallow a key that belongs to a text field. The page can
+// be embedded beside other controls, and taking the space bar there would both
+// lose the character and destroy a race in progress.
+function isTextTarget(node) {
+  if (!node || typeof node.closest !== "function") return false;
+  return !!node.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']");
+}
+
+window.addEventListener("keydown", (e) => {
+  if (isTextTarget(e.target)) return;
+  if (e.code === "Space") { e.preventDefault(); uiStart(); return; }
+  const name = KEY_MAP[e.key];
+  if (name) { e.preventDefault(); press(name, "key"); }
+});
+
+window.addEventListener("keyup", (e) => {
+  const name = KEY_MAP[e.key];
+  if (name) release(name, "key");
+});
+
+// A lost window must never leave a control held.
+window.addEventListener("blur", () => {
+  held.throttle.clear();
+  held.brake.clear();
+  applyHeld();
+});
+
+let manual = false;
+let lastFrameMs = 0;
+let accMs = 0;
+
+function frame(nowMs) {
+  if (!manual) {
+    let delta = lastFrameMs === 0 ? 0 : nowMs - lastFrameMs;
+    lastFrameMs = nowMs;
+    if (delta > K.MAX_FRAME_DELTA_MS) delta = K.MAX_FRAME_DELTA_MS;
+    if (delta < 0) delta = 0;
+    accMs += delta;
+    while (accMs >= K.STEP_MS) { step(); accMs -= K.STEP_MS; }
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+window.__drivetrain = {
+  get state()       { return S.state; },
+  get result()      { return S.result; },
+  get playerPos()   { return S.playerPos; },
+  get playerSpeed() { return S.playerSpeed; },
+  get rivalPos()    { return S.rivalPos; },
+  get rivalDone()   { return S.rivalDone; },
+  get rivalMax()    { return S.rivalMax; },
+  get rivalBase()   { return S.rivalBase; },
+  get rivalSpeed()  { return S.rivalSpeed; },
+  get rivalGapM()   { return S.rivalPos - S.playerPos; },
+  get grip()        { return S.gripName; },
+  get stopInM()     { return brakeDistance(S.playerSpeed, K.BRAKE_DECEL); },
+  get passedWarn()  { return S.passedWarn; },
+  get rivalBraking(){ return S.rivalBraking; },
+  get elapsedMs()   { return S.elapsedMs; },
+  get bestMs()      { return S.bestMs; },
+  get track() {
+    return {
+      length:        K.TRACK_LENGTH_M,
+      platformStart: S.platformStart,
+      platformEnd:   S.platformEnd,
+      warnAt:        S.warnAtM
+    };
+  },
+  test: {
+    // start({rivalMax}) pins the rival so a check stays deterministic.
+    start(opts) {
+      manual = true;
+      S.forcedRivalMax = (opts && typeof opts.rivalMax === "number") ? opts.rivalMax : null;
+      S.forcedPlatformStart = (opts && typeof opts.platformStart === "number") ? opts.platformStart : null;
+      S.forcedGrip = (opts && typeof opts.grip === "string") ? opts.grip : null;
+      startRace();
+    },
+    setInput(next) { setInput(next); },
+    step(n) { manual = true; for (let i = 0; i < n; i += 1) step(); },
+    reset() { manual = true; resetRace(); }
+  }
+};
+</script>
+</body>
+</html>
