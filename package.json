@@ -1,0 +1,17 @@
+{
+  "name": "drivetrain",
+  "private": true,
+  "version": "0.0.0",
+  "description": "a game to drive train",
+  "type": "module",
+  "scripts": {
+    "test": "node test/contract.mjs",
+    "artifact": "node tools/make-artifact.mjs",
+    "proto": "python3 -m http.server 8080",
+    "proto:build": "node tools/make-proto.mjs"
+  },
+  "devDependencies": {
+    "three": "0.185.1",
+    "esbuild": "0.28.2"
+  }
+}

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>drivetrain — 3D driving prototype</title>
+<style>
+  :root {
+    --bg: #eceeef;
+    --panel: #ffffff;
+    --ink: #1c2226;
+    --muted: #6b7680;
+    --edge: #d5d9db;
+    --accent: #2f6f4f;
+    --warn: #b8862c;
+    --danger: #a5372f;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: var(--bg); color: var(--ink);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden; overscroll-behavior: none; touch-action: none;
+  }
+  #scene { position: fixed; inset: 0; display: block; width: 100%; height: 100%; }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: max(10px, env(safe-area-inset-top)) 12px 0 12px;
+    pointer-events: none;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: 10px;
+    padding: 8px 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    pointer-events: auto;
+  }
+  #speedCard { text-align: left; }
+  #speed { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #speedUnit { font-size: 11px; color: var(--muted); margin-left: 4px; }
+  #stateCard { text-align: right; min-width: 120px; }
+  #resultText { font-weight: 700; font-size: 15px; }
+  #resultText.win { color: var(--accent); }
+  #resultText.lose { color: var(--danger); }
+  #timeText, #gripText { color: var(--muted); font-size: 12px; }
+
+  #topRight {
+    display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
+  }
+  #fps { font-size: 11px; color: var(--muted); }
+
+  #centerMsg {
+    position: fixed; top: 46%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; pointer-events: none;
+  }
+  #centerMsg .big { font-size: 26px; font-weight: 700; }
+  #centerMsg .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  #controls {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding: 0 14px max(14px, env(safe-area-inset-bottom)) 14px;
+    gap: 12px;
+  }
+  .lever {
+    -webkit-user-select: none; user-select: none;
+    width: 42vw; max-width: 220px; height: 84px;
+    border-radius: 14px; border: 1px solid var(--edge);
+    background: var(--panel); color: var(--ink);
+    font-size: 15px; font-weight: 700; letter-spacing: .04em;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    touch-action: none;
+  }
+  .lever.held { background: var(--ink); color: var(--panel); }
+  #brakeLever.held { background: var(--danger); color: #fff; }
+
+  #startBtn {
+    position: fixed; left: 50%; bottom: 108px; transform: translateX(-50%);
+    padding: 10px 22px; border-radius: 999px; border: 1px solid var(--edge);
+    background: var(--panel); color: var(--ink); font-weight: 700;
+    letter-spacing: .05em; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+
+  #qualityBtn {
+    padding: 6px 10px; border-radius: 999px; border: 1px solid var(--edge);
+    background: var(--panel); color: var(--muted); font-size: 11px;
+    pointer-events: auto;
+  }
+
+  @media (min-width: 820px) {
+    .lever { width: 160px; }
+    #controls { padding-bottom: 20px; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div id="hud">
+    <div id="speedCard" class="card">
+      <span id="speed">0</span><span id="speedUnit">m/s</span>
+    </div>
+    <div id="topRight">
+      <div id="qualityBtn">quality: auto</div>
+      <div id="fps">-- fps</div>
+      <div id="stateCard" class="card">
+        <div id="resultText"></div>
+        <div id="timeText">0.00s</div>
+        <div id="gripText">rail: DRY</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="centerMsg"></div>
+
+  <button id="startBtn" type="button">START</button>
+  <div id="controls">
+    <div id="brakeLever" class="lever">BRAKE</div>
+    <div id="throttleLever" class="lever">THROTTLE</div>
+  </div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "../node_modules/three/build/three.module.js",
+    "three/addons/": "../node_modules/three/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
