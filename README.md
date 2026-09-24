@@ -10,6 +10,8 @@ browser and it runs.
 **Indie version:** `godot/` holds *Last Stop*, a Godot 4 remake of this game with
 pixel art, synthesized sound and music, an 8-station campaign, a free-race
 career, and export presets for web and desktop. See [`godot/README.md`](godot/README.md).
+Both games are published to GitHub Pages from `main` (Last Stop at the root, this
+game at `/classic/`).
 
 ---
 

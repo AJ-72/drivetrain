@@ -74,3 +74,10 @@ ignores.
 For itch.io, upload the Web build as a zip of `export/web/` and set the
 embed size to 960x540 or 1440x810. See `release/itch-page.md` for the page
 text.
+
+## Play in the browser
+
+`.github/workflows/pages.yml` exports the Web preset on every push to `main`
+and publishes it to GitHub Pages: *Last Stop* at the site root, the original
+HTML game at `/classic/`. Pull requests run the same export without
+publishing. One-time setup: Settings > Pages > Source: **GitHub Actions**.
