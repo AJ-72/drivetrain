@@ -44,9 +44,15 @@ in code at 480x270 and scaled up by whole numbers.
 |---|---|---|---|
 | Throttle | `W` / `Up` | right button | RT |
 | Brake | `S` / `Down` | left button | LT |
-| Pause | `Esc` / `P` | tap the top bar | |
+| Pause | `Esc` / `P` | the II button, top right | |
 | Restart | `R` | pause menu | |
 | Menus | arrows, `Enter`, `Esc` | tap | D-pad, A, B |
+
+On phones the levers show HOLD in place of the key names, the start, a win and
+a loss give a short vibration (Android browsers), and a phone held upright
+pauses the race and asks to be turned sideways. The web title screen has a
+FULL SCREEN item (not on iPhone and iPad, where Safari has no full-screen API
+for pages).
 
 ## Checks
 
@@ -80,4 +86,6 @@ text.
 `.github/workflows/pages.yml` exports the Web preset on every push to `main`
 and publishes it to GitHub Pages: *Last Stop* at the site root, the original
 HTML game at `/classic/`. Pull requests run the same export without
-publishing. One-time setup: Settings > Pages > Source: **GitHub Actions**.
+publishing. Each build also runs `tools/web-audio-check.mjs` (the game makes
+sound) and `tools/web-touch-check.mjs` (a finger tap reaches the menus) in
+headless Chromium. One-time setup: Settings > Pages > Source: **GitHub Actions**.

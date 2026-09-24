@@ -8,38 +8,13 @@
 // would play. A test tone through the same tap first proves the tap works, so a
 // silent reading always means a silent game, not a broken harness.
 
-import { createRequire } from "module";
-import http from "http";
-import fs from "fs";
 import path from "path";
-
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require("playwright"));
-} catch {
-  ({ chromium } = createRequire("/opt/node22/lib/node_modules/")("playwright"));
-}
+import { serve, launch } from "./web-serve.mjs";
 
 const DIR = path.resolve(process.argv[2] || "godot/export/web");
 const MIN_PEAK = 0.01;
-const TYPES = {
-  ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
-  ".pck": "application/octet-stream", ".png": "image/png", ".svg": "image/svg+xml",
-};
-
-const server = http.createServer((req, res) => {
-  const rel = decodeURIComponent(req.url.split("?")[0]).replace(/^\/+/, "") || "index.html";
-  const file = path.join(DIR, rel);
-  if (!file.startsWith(DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
-    res.writeHead(404).end();
-    return;
-  }
-  res.writeHead(200, { "Content-Type": TYPES[path.extname(file)] || "application/octet-stream" });
-  fs.createReadStream(file).pipe(res);
-});
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const url = `http://127.0.0.1:${server.address().port}/index.html`;
+const site = await serve(DIR);
+const url = site.url;
 
 const TAP = () => {
   window.__taps = [];
@@ -78,14 +53,7 @@ async function measure(page, ms) {
   return peak;
 }
 
-const browser = await chromium.launch({
-  args: [
-    "--autoplay-policy=no-user-gesture-required",
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--ignore-gpu-blocklist",
-  ],
-});
+const browser = await launch();
 let failed = false;
 try {
   // 1. The harness: a test tone through the tap must read as sound.
@@ -138,6 +106,6 @@ try {
   failed = true;
 } finally {
   await browser.close();
-  server.close();
+  site.close();
 }
 process.exit(failed ? 1 : 0);

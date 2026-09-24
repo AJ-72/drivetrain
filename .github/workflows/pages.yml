@@ -3,7 +3,8 @@ name: Publish to GitHub Pages
 # Builds the Last Stop web export and publishes it with the original HTML game.
 #   /          Last Stop (Godot web build, no threads, so no special headers)
 #   /classic/  the original index.html
-# Every build plays the export in headless Chromium and fails if it is silent.
+# Every build plays the export in headless Chromium and fails if it is silent
+# or if a finger tap does not reach the menus.
 # Pull requests and claude/* branches build the site. Only main deploys.
 
 on:
@@ -12,13 +13,13 @@ on:
     paths:
       - "godot/**"
       - "index.html"
-      - "tools/web-audio-check.mjs"
+      - "tools/web-*.mjs"
       - ".github/workflows/pages.yml"
   pull_request:
     paths:
       - "godot/**"
       - "index.html"
-      - "tools/web-audio-check.mjs"
+      - "tools/web-*.mjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -94,6 +95,9 @@ jobs:
 
       - name: Check that the web build makes sound
         run: node tools/web-audio-check.mjs godot/export/web
+
+      - name: Check that touch works in the web build
+        run: node tools/web-touch-check.mjs godot/export/web
 
       - name: Assemble the site
         run: |

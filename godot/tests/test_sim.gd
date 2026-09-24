@@ -165,10 +165,29 @@ func _start_scene_test() -> void:
 	script_steps.append(func():
 		check(game.sim.state == RaceSim.State.RACING, "a campaign race starts after the countdown")
 		check(game.sim.player_pos > 0.0, "holding throttle moves the train in the scene"))
-	script_steps.append(func(): game._set_paused(true))
+	# The pause button: a finger on it pauses, and the touch labels draw.
+	script_steps.append(func():
+		game.touch_ui = true
+		game._unhandled_input(_touch(game._pause_rect().get_center(), true))
+		game._unhandled_input(_touch(game._pause_rect().get_center(), false))
+		check(game.paused, "a tap on the pause button pauses the race"))
+	script_steps.append(func(): pass)
+	script_steps.append(func():
+		game._activate("resume")
+		check(not game.paused, "resume ends the pause"))
+	script_steps.append(func(): pass)
+	# A phone held upright pauses the race and shows the rotate prompt.
+	script_steps.append(func(): game.portrait_test = true)
+	script_steps.append(func(): pass)
+	script_steps.append(func():
+		check(game.paused, "a phone held upright pauses the race")
+		game._unhandled_input(_touch(Vector2(240, 150), true))
+		check(game.paused and game.touches.is_empty(), "taps do nothing while the phone is upright")
+		game.portrait_test = false)
 	script_steps.append(func(): pass)
 	script_steps.append(func():
 		Input.action_release("throttle")
+		game.touch_ui = false
 		game._set_paused(false))
 	# Finish the race quickly through the sim, then show the result overlay.
 	script_steps.append(func():
@@ -210,6 +229,14 @@ func _start_scene_test() -> void:
 	script_steps.append(func(): pass)
 	script_steps.append(func(): game._activate("menu"))
 	script_steps.append(func(): pass)
+
+
+func _touch(pos: Vector2, pressed: bool) -> InputEventScreenTouch:
+	var e := InputEventScreenTouch.new()
+	e.index = 0
+	e.position = pos
+	e.pressed = pressed
+	return e
 
 
 func _process(_delta: float) -> bool:
