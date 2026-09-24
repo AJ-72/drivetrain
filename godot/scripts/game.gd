@@ -76,6 +76,7 @@ var _mouse_frame := -1
 var _throttle_latch := false # a throttle key press that took a notch off gives no power
 var _pred_best := 0.0      # where the best stop ends, worked out once per frame
 var _pred_now := 0.0       # where the stop on the current notch ends
+var _exit_tried_t := -100.0 # when EXIT last asked the browser to close the page
 var installed_app := false # started from the home screen: already full screen
 
 
@@ -305,12 +306,13 @@ func _items() -> Array:
 			if _fullscreen_supported():
 				ids.append("fullscreen")
 				labels.append("FULL SCREEN: " + ("ON" if _is_fullscreen() else "OFF"))
-			if not OS.has_feature("web"):
-				ids.append("quit")
-				labels.append("QUIT")
+			ids.append("quit")
+			labels.append("EXIT")
+			# Eight items (a browser tab: FULL SCREEN and EXIT) sit closer.
+			var step := 19 if ids.size() <= 7 else 17
 			for i in ids.size():
 				items.append({"id": ids[i], "label": labels[i],
-					"rect": Rect2(VW / 2.0 - 110, 120 + i * 19, 220, 17),
+					"rect": Rect2(VW / 2.0 - 110, 120 + i * step, 220, step - 2),
 					"enabled": ids[i] != "free" or save.campaign_done()})
 		Screen.MAP:
 			# Each station owns its whole slice of the line, so a finger that
@@ -387,7 +389,7 @@ func _activate(id: String) -> void:
 		"fullscreen":
 			_toggle_fullscreen()
 		"quit":
-			get_tree().quit()
+			_exit_game()
 		"back":
 			_go(Screen.TITLE)
 		"prev":
@@ -426,6 +428,17 @@ func _go(s: Screen) -> void:
 	screen = s
 	sel = 0
 	touches.clear()
+
+
+# On the web a page may close itself only when it is the whole history of its
+# window, as a home-screen app is. A browser tab says no, so a note tells the
+# player to leave with the phone's Back or Home button.
+func _exit_game() -> void:
+	if not OS.has_feature("web"):
+		get_tree().quit()
+		return
+	_exit_tried_t = t
+	JavaScriptBridge.eval("window.close()", true)
 
 
 func _fullscreen_supported() -> bool:
@@ -717,8 +730,14 @@ func _draw_title() -> void:
 	_txtc("LAST STOP", VW / 2.0 + 2, 22, SHADOW, 6)
 	_txtc("LAST STOP", VW / 2.0, 20, LAMP, 6)
 	_txtc("A RACE TO STAND STILL", VW / 2.0, 70, WARN)
-	draw_rect(Rect2(VW / 2.0 - 116, 114, 232, 6 + 19 * _items().size()), PANEL)
-	_draw_items(_items())
+	var items := _items()
+	var last: Rect2 = items[items.size() - 1]["rect"]
+	draw_rect(Rect2(VW / 2.0 - 116, 114, 232, last.end.y - 114 + 4), PANEL)
+	_draw_items(items)
+	if t - _exit_tried_t < 5.0:
+		var note := "THE BROWSER KEEPS THIS TAB OPEN. USE BACK OR HOME."
+		draw_rect(Rect2(VW / 2.0 - 160, 84, 320, 14), Color(STOP, 0.9))
+		_txtc(note, VW / 2.0, 88, Color("111111"))
 	var foot := "STARS %d/%d" % [save.total_stars(), Stations.count() * 3]
 	if save.points > 0:
 		foot += "   POINTS %d" % save.points

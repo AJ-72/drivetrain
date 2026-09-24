@@ -200,6 +200,13 @@ func _start_scene_test() -> void:
 	for s in screens:
 		script_steps.append(func(): game.screen = s)
 		script_steps.append(func(): pass)
+	script_steps.append(func():
+		game._go(0)  # Screen.TITLE
+		var ids: Array = game._items().map(func(it): return it["id"])
+		check(ids.has("quit"), "the title screen has an EXIT item")
+		var last: Rect2 = game._items()[ids.size() - 1]["rect"]
+		check(last.end.y <= 256.0, "the title items end above the footer"))
+	script_steps.append(func(): pass)
 	# The route map: a tap near (not on) a station dot selects it, and the
 	# < and > buttons step through the stations.
 	script_steps.append(func():
