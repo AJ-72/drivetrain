@@ -200,6 +200,21 @@ func _start_scene_test() -> void:
 	for s in screens:
 		script_steps.append(func(): game.screen = s)
 		script_steps.append(func(): pass)
+	# The route map: a tap near (not on) a station dot selects it, and the
+	# < and > buttons step through the stations.
+	script_steps.append(func():
+		game._go(1)  # Screen.MAP
+		game.map_sel = 0
+		game._unhandled_input(_touch(Vector2(game._map_x(2) + 20.0, 82.0), true))
+		game._unhandled_input(_touch(Vector2(game._map_x(2) + 20.0, 82.0), false))
+		check(game.map_sel == 2, "a tap near station 3 on the map selects it")
+		game._unhandled_input(_touch(Vector2(460.0, 156.0), true))
+		game._unhandled_input(_touch(Vector2(460.0, 156.0), false))
+		check(game.map_sel == 3, "the > button selects the next station")
+		game._unhandled_input(_touch(Vector2(20.0, 156.0), true))
+		game._unhandled_input(_touch(Vector2(20.0, 156.0), false))
+		check(game.map_sel == 2, "the < button selects the previous station"))
+	script_steps.append(func(): pass)
 	script_steps.append(func(): game._start_race("campaign", 0))
 	script_steps.append(func(): game.countdown = 0.001)
 	script_steps.append(func(): Input.action_press("throttle"))
