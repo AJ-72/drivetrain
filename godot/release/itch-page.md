@@ -14,7 +14,7 @@ Copy the text below into the itch.io project page.
 
 Two trains. One station. The winner is not the one who arrives first. It is the one who comes to a stand on the platform first.
 
-Hold the throttle. Watch the rival pull ahead. Judge the exact moment to brake: too early and you creep in while the rival stops, too late and you sail past the platform. You get one stop. There is no creeping forward.
+Hold SPEED UP. Watch the rival pull ahead. Judge the exact moment to brake: too early and you creep in while the rival stops, too late and you sail past the platform. You get one stop. There is no creeping forward.
 
 - **8-station campaign** along The Coastline, from a dry dawn run to a wet night terminus
 - **Three stars per station:** win, beat par, and stop on the board
@@ -24,7 +24,7 @@ Hold the throttle. Watch the rival pull ahead. Judge the exact moment to brake: 
 - Pixel art, synthesized sound, and a chiptune soundtrack, all made in code
 - Keyboard, gamepad, mouse and touch
 
-**Controls:** W / Up to throttle, S / Down to brake. On a phone, hold the two on-screen buttons.
+**Controls:** hold W / Up to speed up. S / Down and Q set the brake lever (or keys 0 to 3). On a phone, hold SPEED UP and tap or slide the brake lever.
 
 **Made with:** Godot 4
 

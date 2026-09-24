@@ -65,7 +65,7 @@ var acc_ms := 0.0
 var t := 0.0
 var last_joint := 0
 var particles: Array = []
-var touches := {}          # touch index -> "throttle", "notch", "menu" or "fullscreen"
+var touches := {}          # touch index -> "throttle", "lever", "menu" or "fullscreen"
 var outcome := {}          # the result of the last race, for the overlay
 var saved_ok := true
 var _finish_time := 0.0
@@ -73,7 +73,6 @@ var touch_ui := false      # the last input was a finger: hide key hints, vibrat
 var portrait := false      # a touch screen held upright: the game waits
 var portrait_test := false # lets the headless test show the portrait prompt
 var _mouse_frame := -1
-var _throttle_latch := false # a throttle key press that took a notch off gives no power
 var _pred_best := 0.0      # where the best stop ends, worked out once per frame
 var _pred_now := 0.0       # where the stop on the current notch ends
 var _exit_tried_t := -100.0 # when EXIT last asked the browser to close the page
@@ -97,11 +96,14 @@ func _ready() -> void:
 func _setup_input() -> void:
 	_bind("throttle", [KEY_UP, KEY_W], JOY_AXIS_TRIGGER_RIGHT)
 	_bind("brake", [KEY_DOWN, KEY_S], JOY_AXIS_TRIGGER_LEFT)
+	_bind("brake_less", [KEY_Q, KEY_SHIFT], -1, JOY_BUTTON_LEFT_SHOULDER)
+	for n in RaceSim.MAX_NOTCH + 1:
+		_bind("brake_%d" % n, [KEY_0 + n], -1)
 	_bind("restart", [KEY_R], -1)
 	_bind("pause", [KEY_ESCAPE, KEY_P], -1)
 
 
-func _bind(action: String, keys: Array, axis: int) -> void:
+func _bind(action: String, keys: Array, axis: int, button: int = -1) -> void:
 	if InputMap.has_action(action):
 		return
 	InputMap.add_action(action, 0.3)
@@ -114,6 +116,10 @@ func _bind(action: String, keys: Array, axis: int) -> void:
 		jm.axis = axis
 		jm.axis_value = 1.0
 		InputMap.action_add_event(action, jm)
+	if button >= 0:
+		var jb := InputEventJoypadButton.new()
+		jb.button_index = button
+		InputMap.action_add_event(action, jb)
 
 
 func _notification(what: int) -> void:
@@ -172,7 +178,7 @@ func _race_process(delta: float) -> void:
 
 
 func _held(action: String) -> bool:
-	if Input.is_action_pressed(action) and not (action == "throttle" and _throttle_latch):
+	if Input.is_action_pressed(action):
 		return true
 	for k in touches:
 		if touches[k] == action:
@@ -224,7 +230,6 @@ func _start_race(new_mode: String, index: int) -> void:
 	sim.state = RaceSim.State.IDLE
 	countdown = COUNTDOWN_S
 	paused = false
-	_throttle_latch = false
 	acc_ms = 0.0
 	last_joint = 0
 	particles.clear()
@@ -499,17 +504,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_drag(event)
 		return
 	if screen == Screen.RACE and not paused and sim.state != RaceSim.State.RESULT:
-		if event.is_action_released("throttle"):
-			_throttle_latch = false
 		if event.is_action_pressed("pause"):
 			_set_paused(true)
 		elif event.is_action_pressed("restart"):
 			_start_race(mode, station)
 		elif event.is_action_pressed("brake"):
-			_notch(1)
-		elif event.is_action_pressed("throttle") and sim.brake_notch > 0:
-			_notch(-1)
-			_throttle_latch = true
+			_set_notch(sim.brake_notch + 1)
+		elif event.is_action_pressed("brake_less"):
+			_set_notch(sim.brake_notch - 1)
+		else:
+			for n in RaceSim.MAX_NOTCH + 1:
+				if event.is_action_pressed("brake_%d" % n):
+					_set_notch(n)
 		return
 	if screen == Screen.RACE and paused and event.is_action_pressed("pause"):
 		_set_paused(false)
@@ -570,15 +576,11 @@ func _on_touch(e: InputEventScreenTouch) -> void:
 			return
 		var b := _race_button_at(e.position)
 		if b == "brake":
-			touches[e.index] = "notch"
-			_notch(1)
+			touches[e.index] = "lever"
+			_set_notch(_lever_notch_at(e.position.x))
 			return
 		if b == "throttle":
-			if sim.brake_notch > 0:
-				touches[e.index] = "notch"
-				_notch(-1)
-			else:
-				touches[e.index] = "throttle"
+			touches[e.index] = "throttle"
 			return
 	touches[e.index] = "menu"
 	var id := _item_at(e.position)
@@ -603,17 +605,20 @@ func _item_at(p: Vector2) -> String:
 
 
 func _on_drag(e: InputEventScreenDrag) -> void:
-	# A finger that slides off the throttle cuts the power. Notches change only
-	# on a tap, never on a slide.
-	if touches.get(e.index, "") == "throttle" and _race_button_at(e.position) != "throttle":
+	# A finger that slides off the throttle cuts the power. A finger that
+	# holds the lever drags its handle, even when it slides off the lever.
+	var held: String = touches.get(e.index, "")
+	if held == "throttle" and _race_button_at(e.position) != "throttle":
 		touches.erase(e.index)
+	elif held == "lever":
+		_set_notch(_lever_notch_at(e.position.x))
 
 
-## Moves the brake handle one notch. Only while the train runs.
-func _notch(d: int) -> void:
+## Puts the brake handle on a notch. Only while the train runs.
+func _set_notch(target: int) -> void:
 	if sim.state != RaceSim.State.RACING:
 		return
-	var n := clampi(sim.brake_notch + d, 0, RaceSim.MAX_NOTCH)
+	var n := clampi(target, 0, RaceSim.MAX_NOTCH)
 	if n == sim.brake_notch:
 		return
 	sim.brake_notch = n
@@ -637,11 +642,23 @@ func _pause_rect() -> Rect2:
 
 
 func _brake_rect() -> Rect2:
-	return Rect2(6, 220, 132, 46)
+	return Rect2(6, 218, 204, 48)
 
 
 func _throttle_rect() -> Rect2:
-	return Rect2(VW - 138, 220, 132, 46)
+	return Rect2(VW - 150, 218, 144, 48)
+
+
+## One position of the brake lever: 0 is OFF, then notches 1 to 3.
+func _lever_cell(r: Rect2, n: int) -> Rect2:
+	var w := (r.size.x - 8.0) / (RaceSim.MAX_NOTCH + 1)
+	return Rect2(r.position.x + 4.0 + n * w, r.position.y + 13, w, 22)
+
+
+func _lever_notch_at(x: float) -> int:
+	var r := _brake_rect()
+	var w := (r.size.x - 8.0) / (RaceSim.MAX_NOTCH + 1)
+	return clampi(floori((x - r.position.x - 4.0) / w), 0, RaceSim.MAX_NOTCH)
 
 
 # ------------------------------------------------------------------ drawing
@@ -858,24 +875,10 @@ func _is_sel(id: String) -> bool:
 
 # ----------------------------------------------------------------- the help
 
-const HELP_LINES := [
-	["YOU DRIVE THE LOWER TRAIN. THE RIVAL DRIVES THE UPPER ONE.", INK],
-	["WIN: STOP WITH YOUR NOSE INSIDE THE PLATFORM", GO],
-	["BEFORE THE RIVAL FINISHES ITS OWN STOP.", GO],
-	["ARRIVING FIRST DOES NOT WIN. STOPPING DOES.", WARN],
-	["", INK],
-	["THROTTLE  HOLD UP / W / RIGHT BUTTON (AT NOTCH 0)", INK],
-	["BRAKE     TAP DOWN / S / LEFT: +1 NOTCH. UP / RIGHT: -1", INK],
-	["PAUSE  ESC / P / THE II BUTTON.  RESTART  R", INK],
-	["", INK],
-	["STOP NEEDS  HOW FAR THE BEST STOP CARRIES YOU NOW", MUTED],
-	["PLATFORM IN HOW FAR THE PLATFORM IS", MUTED],
-	["BRAKE WHEN THE TWO ARE ABOUT EQUAL. MORE NOTCHES BRAKE HARDER.", INK],
-	["THE DASHED MARKER SHOWS WHERE YOU WOULD STOP.", INK],
-	["IT TURNS GREEN INSIDE THE PLATFORM.", INK],
-	["TOO MANY NOTCHES WHEN FAST OR WET LOCK THE WHEELS: A SLIDE.", WARN],
-	["ONE STOP ONLY. YOU CANNOT CREEP FORWARD AGAIN.", STOP],
-	["PHONE: BROWSER MENU > ADD TO HOME SCREEN FOR A FULL SCREEN APP", MUTED],
+const HELP_STEPS := [
+	"HOLD SPEED UP TO GO FASTER.",
+	"WHEN STOP NEEDS AND PLATFORM IN ARE ABOUT EQUAL, SET THE BRAKE.",
+	"STOP WITH THE DASHED MARKER GREEN, INSIDE THE PLATFORM.",
 ]
 
 
@@ -883,8 +886,22 @@ func _draw_help() -> void:
 	_draw_backdrop(2, t * 6.0, false)
 	draw_rect(Rect2(0, 0, VW, VH), Color(0, 0, 0, 0.6))
 	_txtc("HOW TO PLAY", VW / 2.0, 8, LAMP, 2)
-	for i in HELP_LINES.size():
-		_txt(HELP_LINES[i][0], 30, 34 + i * 12, HELP_LINES[i][1])
+	_txtc("GOAL: STOP INSIDE THE PLATFORM BEFORE THE RIVAL STOPS.", VW / 2.0, 30, GO)
+	_txtc("BEING FIRST DOES NOT WIN. STOPPING DOES.", VW / 2.0, 41, WARN)
+	for i in HELP_STEPS.size():
+		var y := 58 + i * 14
+		_txt(str(i + 1), 24, y, LAMP)
+		_txt(HELP_STEPS[i], 36, y, INK)
+	var lever := Rect2(40, 108, 204, 48)
+	var button := Rect2(296, 108, 144, 48)
+	_draw_brake_lever(lever, 1, false, touch_ui)
+	_draw_speed_button(button, false, false, touch_ui)
+	_txtc("HANDLE STAYS WHERE YOU PUT IT.", lever.get_center().x, 164, MUTED)
+	_txtc("HIGHER NUMBER BRAKES HARDER.", lever.get_center().x, 175, MUTED)
+	_txtc("POWER ONLY WHILE YOU HOLD IT", button.get_center().x, 164, MUTED)
+	_txtc("AND THE BRAKE IS OFF.", button.get_center().x, 175, MUTED)
+	_txtc("TOO MUCH BRAKE WHEN FAST OR WET: THE WHEELS SLIDE.", VW / 2.0, 194, WARN)
+	_txtc("ONE STOP ONLY. YOU CANNOT CREEP FORWARD AGAIN.", VW / 2.0, 206, STOP)
 	_draw_items(_items())
 
 
@@ -1285,8 +1302,11 @@ func _draw_callout() -> void:
 		return
 	var text := ""
 	var c := WARN
-	if sim.sliding:
-		text = "WHEEL SLIDE - TAP THROTTLE TO EASE" if touch_ui else "WHEEL SLIDE - EASE THE BRAKE (UP)"
+	if sim.player_pos <= 0.0 and not _held("throttle"):
+		text = "HOLD SPEED UP TO START" if touch_ui else "HOLD W / UP TO START"
+		c = GO
+	elif sim.sliding:
+		text = "WHEEL SLIDE - MOVE THE BRAKE TO A LOWER NUMBER" if touch_ui else "WHEEL SLIDE - EASE THE BRAKE (Q)"
 		c = STOP
 		if fmod(t, 0.3) > 0.2:
 			return
@@ -1307,36 +1327,54 @@ func _draw_callout() -> void:
 func _draw_levers() -> void:
 	if sim.state == RaceSim.State.RESULT or paused:
 		return
-	var br := _brake_rect()
-	var th := _throttle_rect()
-	var notch := sim.brake_notch
-	var b_on := notch > 0
-	var t_on := sim.throttle or (notch == 0 and _held("throttle"))
-	var b_fill := Color(STOP, 0.2 + 0.15 * notch) if b_on else Color(0, 0, 0, 0.45)
-	if sim.sliding and fmod(t, 0.3) < 0.15:
-		b_fill = Color(WARN, 0.7)
-	_box(br, b_fill, STOP)
-	_box(th, Color(GO, 0.55) if t_on else Color(0, 0, 0, 0.45), GO)
-	_txtc("BRAKE", br.get_center().x, br.position.y + 5, INK, 2)
-	# one lamp for each notch
-	for i in RaceSim.MAX_NOTCH:
-		var lit := i < notch
-		var lamp := Rect2(br.get_center().x - 23 + i * 16, br.position.y + 23, 14, 6)
-		draw_rect(lamp, (WARN if sim.sliding else STOP) if lit else Color(0, 0, 0, 0.5))
-		if not lit:
-			_box(lamp, Color(0, 0, 0, 0), EDGE.lightened(0.3))
-	_txtc("RELEASE" if b_on else "THROTTLE", th.get_center().x, th.position.y + 5, INK, 2)
-	if touch_ui:
-		_txtc("TAP: NOTCH +1", br.get_center().x, br.position.y + 34, MUTED)
-		_txtc("TAP: NOTCH -1" if b_on else "HOLD FOR POWER", th.get_center().x, th.position.y + 34, MUTED)
-	else:
-		_txtc("S / DOWN: NOTCH +1", br.get_center().x, br.position.y + 34, MUTED)
-		_txtc("W / UP: NOTCH -1" if b_on else "HOLD W / UP", th.get_center().x, th.position.y + 34, MUTED)
+	var held := sim.throttle or (sim.brake_notch == 0 and _held("throttle"))
+	_draw_brake_lever(_brake_rect(), sim.brake_notch, sim.sliding, touch_ui)
+	_draw_speed_button(_throttle_rect(), held, sim.brake_notch > 0, touch_ui)
+	# Until the train first moves, the speed button pulses to show where to start.
+	if sim.player_pos <= 0.0 and not held and fmod(t, 0.8) < 0.4:
+		var th := _throttle_rect().grow(2)
+		_box(th, Color(0, 0, 0, 0), LAMP)
 	# the pause button
 	var pr := _pause_rect()
 	_box(pr, Color(0, 0, 0, 0.45), EDGE.lightened(0.3))
 	draw_rect(Rect2(pr.position.x + 9, pr.position.y + 6, 3, 10), INK)
 	draw_rect(Rect2(pr.position.x + 14, pr.position.y + 6, 3, 10), INK)
+
+
+## The brake lever: OFF and notches 1 to 3. The handle stays where it is put.
+func _draw_brake_lever(r: Rect2, notch: int, sliding: bool, touch: bool) -> void:
+	_box(r, Color(STOP, 0.12 + 0.12 * notch) if notch > 0 else Color(0, 0, 0, 0.45), STOP)
+	_txtc("BRAKE LEVER", r.get_center().x, r.position.y + 3, INK)
+	for n in RaceSim.MAX_NOTCH + 1:
+		var c := _lever_cell(r, n).grow_individual(-1, 0, -1, 0)
+		var on := n == notch
+		var lamp := (WARN if sliding and fmod(t, 0.3) < 0.15 else STOP) if n > 0 else GO
+		if on:
+			draw_rect(c, Color(lamp, 0.85))
+		else:
+			_box(c, Color(0, 0, 0, 0.5), EDGE.lightened(0.3))
+		var label := "OFF" if n == 0 else str(n)
+		_txtc(label, c.get_center().x, c.position.y + 4, Color("111111") if on else MUTED, 2)
+	var hint := "TAP OR SLIDE" if touch else "DOWN/S: +1   Q: -1   KEYS 0-3"
+	_txtc(hint, r.get_center().x, r.position.y + 38, MUTED)
+
+
+## The speed button gives power only while it is held and the brake is OFF.
+func _speed_button_text(held: bool, blocked: bool, touch: bool) -> Array:
+	if blocked:
+		return ["", "BRAKE IS ON", "SET BRAKE TO OFF"]
+	if held:
+		return ["", "SPEEDING UP", "LET GO: NO POWER"]
+	return ["HOLD TO", "SPEED UP", "" if touch else "HOLD W / UP"]
+
+
+func _draw_speed_button(r: Rect2, held: bool, blocked: bool, touch: bool) -> void:
+	_box(r, Color(GO, 0.6) if held else Color(0, 0, 0, 0.45), MUTED if blocked else GO)
+	var lines := _speed_button_text(held, blocked, touch)
+	var cx := r.get_center().x
+	_txtc(lines[0], cx, r.position.y + 5, INK)
+	_txtc(lines[1], cx, r.position.y + 15, MUTED if blocked else INK, 2)
+	_txtc(lines[2], cx, r.position.y + 36, MUTED)
 
 
 func _draw_countdown() -> void:

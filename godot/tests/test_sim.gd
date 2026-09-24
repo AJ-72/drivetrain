@@ -230,27 +230,42 @@ func _start_scene_test() -> void:
 	script_steps.append(func():
 		check(game.sim.state == RaceSim.State.RACING, "a campaign race starts after the countdown")
 		check(game.sim.player_pos > 0.0, "holding throttle moves the train in the scene"))
-	# The notch lever: taps on BRAKE add notches, taps on THROTTLE take them off.
+	# The brake lever: a tap on a position sets that notch, a slide moves the
+	# handle, and the speed button never changes the notch.
 	script_steps.append(func():
-		var br: Vector2 = game._brake_rect().get_center()
+		var lever: Rect2 = game._brake_rect()
+		game._unhandled_input(_touch(game._lever_cell(lever, 2).get_center(), true))
+		game._unhandled_input(_touch(game._lever_cell(lever, 2).get_center(), false))
+		check(game.sim.brake_notch == 2, "a tap on lever position 2 sets notch 2")
+		game._unhandled_input(_touch(game._lever_cell(lever, 1).get_center(), true))
+		game._unhandled_input(_drag(game._lever_cell(lever, 3).get_center()))
+		check(game.sim.brake_notch == 3, "a slide on the lever moves the handle to 3")
+		game._unhandled_input(_drag(Vector2(0, 150)))
+		check(game.sim.brake_notch == 0, "a slide past the left end moves the handle to OFF")
+		game._unhandled_input(_touch(Vector2(0, 150), false))
+		game._unhandled_input(_touch(game._lever_cell(lever, 1).get_center(), true))
+		game._unhandled_input(_touch(game._lever_cell(lever, 1).get_center(), false))
 		var th: Vector2 = game._throttle_rect().get_center()
-		for i in 2:
-			game._unhandled_input(_touch(br, true))
-			game._unhandled_input(_touch(br, false))
-		check(game.sim.brake_notch == 2, "two taps on BRAKE set notch 2")
 		game._unhandled_input(_touch(th, true))
-		check(game.sim.brake_notch == 1, "a tap on THROTTLE takes a notch off")
-		check(game.touches.get(0, "") == "notch", "a THROTTLE tap that takes a notch off gives no power")
+		check(game.sim.brake_notch == 1, "a tap on SPEED UP does not change the brake")
+		check(game.touches.get(0, "") == "throttle", "a finger on SPEED UP holds the power")
 		game._unhandled_input(_touch(th, false))
+		game._unhandled_input(_key(KEY_DOWN, true))
+		game._unhandled_input(_key(KEY_DOWN, false))
 		game._unhandled_input(_key(KEY_DOWN, true))
 		game._unhandled_input(_key(KEY_DOWN, false))
 		game._unhandled_input(_key(KEY_DOWN, true))
 		check(game.sim.brake_notch == 3, "the Down key adds notches up to 3")
 		game._unhandled_input(_key(KEY_DOWN, false))
-		for i in 3:
-			game._unhandled_input(_key(KEY_UP, true))
-			game._unhandled_input(_key(KEY_UP, false))
-		check(game.sim.brake_notch == 0, "the Up key takes the notches off"))
+		game._unhandled_input(_key(KEY_Q, true))
+		game._unhandled_input(_key(KEY_Q, false))
+		check(game.sim.brake_notch == 2, "the Q key takes a notch off")
+		game._unhandled_input(_key(KEY_UP, true))
+		check(game.sim.brake_notch == 2, "the Up key does not change the brake")
+		game._unhandled_input(_key(KEY_UP, false))
+		game._unhandled_input(_key(KEY_0, true))
+		game._unhandled_input(_key(KEY_0, false))
+		check(game.sim.brake_notch == 0, "the 0 key puts the brake to OFF"))
 	script_steps.append(func(): pass)
 	script_steps.append(func():
 		check(game.sim.throttle, "at notch 0 a held throttle gives power again"))
@@ -333,6 +348,13 @@ func _touch(pos: Vector2, pressed: bool) -> InputEventScreenTouch:
 	e.index = 0
 	e.position = pos
 	e.pressed = pressed
+	return e
+
+
+func _drag(pos: Vector2) -> InputEventScreenDrag:
+	var e := InputEventScreenDrag.new()
+	e.index = 0
+	e.position = pos
 	return e
 
 

@@ -8,9 +8,13 @@ same physics, step for step, plus a brake handle with notches.
 
 ## The brake handle
 
-The brake has notches 0 to 3. Each tap on BRAKE (`S` / `Down`) adds a notch,
-and each tap on THROTTLE (`W` / `Up`) takes one off. The brake stays on when
-you let go. Power works only at notch 0.
+The brake is a lever with four positions: OFF, 1, 2 and 3. On a touch screen,
+tap a position or slide the handle. On a keyboard, `S` / `Down` adds a notch,
+`Q` / `Shift` takes one off, and `0` to `3` set the notch. The handle stays
+where you put it.
+
+Power is a separate button, SPEED UP. The train gets power only while you hold
+it (`W` / `Up`) and only while the brake lever is at OFF.
 
 More notches brake harder, but the rail holds only so much. The grip falls
 with speed and with a damp or wet rail. A notch that asks for more than the
@@ -63,14 +67,15 @@ in code at 480x270 and scaled up by whole numbers.
 
 | | Keyboard | Touch / mouse | Gamepad |
 |---|---|---|---|
-| Throttle (at notch 0) | hold `W` / `Up` | hold right button | RT |
-| Brake notch +1 | `S` / `Down` | tap left button | LT |
-| Brake notch -1 | `W` / `Up` | tap right button | RT |
+| Speed up (brake at OFF) | hold `W` / `Up` | hold SPEED UP, right | RT |
+| Brake notch +1 | `S` / `Down` | tap or slide the lever, left | LT |
+| Brake notch -1 | `Q` / `Shift` | tap or slide the lever, left | LB |
+| Brake OFF, 1, 2, 3 | `0`, `1`, `2`, `3` | tap the position | |
 | Pause | `Esc` / `P` | the II button, top right | |
 | Restart | `R` | pause menu | |
 | Menus | arrows, `Enter`, `Esc` | tap | D-pad, A, B |
 
-On phones the levers show HOLD in place of the key names, the start, a win and
+On phones the controls show touch hints in place of the key names, the start, a win and
 a loss give a short vibration (Android browsers), and a phone held upright
 pauses the race and asks to be turned sideways. The web title screen has a
 FULL SCREEN item (not on iPhone and iPad, where Safari has no full-screen API
