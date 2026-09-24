@@ -73,6 +73,7 @@ var touch_ui := false      # the last input was a finger: hide key hints, vibrat
 var portrait := false      # a touch screen held upright: the game waits
 var portrait_test := false # lets the headless test show the portrait prompt
 var _mouse_frame := -1
+var installed_app := false # started from the home screen: already full screen
 
 
 func _ready() -> void:
@@ -86,6 +87,7 @@ func _ready() -> void:
 	synth.sfx_on = save.sfx_on
 	map_sel = _first_open_station()
 	touch_ui = DisplayServer.is_touchscreen_available()
+	installed_app = _started_as_app()
 
 
 func _setup_input() -> void:
@@ -411,7 +413,17 @@ func _go(s: Screen) -> void:
 
 
 func _fullscreen_supported() -> bool:
-	return OS.has_feature("web") and not OS.has_feature("web_ios")
+	return OS.has_feature("web") and not OS.has_feature("web_ios") and not installed_app
+
+
+# The web export is also a home-screen app (export_presets.cfg: full screen,
+# landscape). Some browsers keep a note on the screen in page full screen; the
+# app has no browser bar and no note.
+func _started_as_app() -> bool:
+	if not OS.has_feature("web"):
+		return false
+	var q := "window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches"
+	return JavaScriptBridge.eval(q, true) == true
 
 
 func _is_fullscreen() -> bool:
@@ -807,6 +819,7 @@ const HELP_LINES := [
 	["IT TURNS GREEN INSIDE THE PLATFORM.", INK],
 	["A WET RAIL CARRIES YOU ABOUT 35% FURTHER.", WARN],
 	["ONE STOP ONLY. YOU CANNOT CREEP FORWARD AGAIN.", STOP],
+	["PHONE: BROWSER MENU > ADD TO HOME SCREEN FOR A FULL SCREEN APP", MUTED],
 ]
 
 
