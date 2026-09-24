@@ -81,6 +81,10 @@ screen** or **Install app**). The app opens full screen and locked to
 landscape, with no browser bar. Use it on phones whose browser keeps a
 full-screen note over the game. The FULL SCREEN item hides in the app.
 
+The title screen has an EXIT item. It closes the home-screen app and the
+desktop builds. A normal browser tab does not let a page close itself, so there
+EXIT shows a note to use the phone's Back or Home button.
+
 ## Checks
 
 ```
