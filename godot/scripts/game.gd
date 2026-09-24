@@ -9,6 +9,9 @@ extends Node2D
 ## Input has one path for touch and mouse (project settings turn mouse clicks
 ## into touches). Each race button tracks which touch indices hold it, so one
 ## finger's release never drops another finger's hold.
+##
+## Phones: a pause button, a prompt to turn a phone held upright, a full-screen
+## item on the web title screen, touch-only labels and short vibrations.
 
 enum Screen { TITLE, MAP, GARAGE, HELP, RACE }
 
@@ -66,6 +69,10 @@ var touches := {}          # touch index -> "throttle", "brake" or "menu"
 var outcome := {}          # the result of the last race, for the overlay
 var saved_ok := true
 var _finish_time := 0.0
+var touch_ui := false      # the last input was a finger: hide key hints, vibrate
+var portrait := false      # a touch screen held upright: the game waits
+var portrait_test := false # lets the headless test show the portrait prompt
+var _mouse_frame := -1
 
 
 func _ready() -> void:
@@ -78,6 +85,7 @@ func _ready() -> void:
 	synth.music_on = save.music_on
 	synth.sfx_on = save.sfx_on
 	map_sel = _first_open_station()
+	touch_ui = DisplayServer.is_touchscreen_available()
 
 
 func _setup_input() -> void:
@@ -113,6 +121,10 @@ func _notification(what: int) -> void:
 
 func _process(delta: float) -> void:
 	t += delta
+	var ws := DisplayServer.window_get_size()
+	portrait = portrait_test or (DisplayServer.is_touchscreen_available() and ws.y > ws.x)
+	if portrait and screen == Screen.RACE and not paused and sim.state != RaceSim.State.RESULT:
+		_set_paused(true)
 	if screen == Screen.RACE and not paused:
 		_race_process(delta)
 	_update_particles(delta)
@@ -133,6 +145,7 @@ func _race_process(delta: float) -> void:
 			acc_ms = 0.0
 			synth.play("go")
 			synth.play("horn")
+			_buzz(60)
 		elif after < before:
 			synth.play("beep")
 		return
@@ -256,6 +269,7 @@ func _on_finish() -> void:
 	sel = 0
 	synth.stop_train()
 	synth.play("win" if win else "lose")
+	_buzz(120 if win else 300)
 	for i in int(o["stars"]):
 		get_tree().create_timer(0.6 + 0.35 * i).timeout.connect(synth.play.bind("star", 1.0 + 0.12 * i))
 
@@ -281,6 +295,9 @@ func _items() -> Array:
 				"SOUND: " + ("ON" if save.sfx_on else "OFF")]
 			if not save.campaign_done():
 				labels[1] = "FREE RACE (FINISH THE LINE)"
+			if _fullscreen_supported():
+				ids.append("fullscreen")
+				labels.append("FULL SCREEN: " + ("ON" if _is_fullscreen() else "OFF"))
 			if not OS.has_feature("web"):
 				ids.append("quit")
 				labels.append("QUIT")
@@ -353,6 +370,8 @@ func _activate(id: String) -> void:
 			save.sfx_on = not save.sfx_on
 			synth.sfx_on = save.sfx_on
 			save.save()
+		"fullscreen":
+			_toggle_fullscreen()
 		"quit":
 			get_tree().quit()
 		"back":
@@ -391,7 +410,47 @@ func _go(s: Screen) -> void:
 	touches.clear()
 
 
+func _fullscreen_supported() -> bool:
+	return OS.has_feature("web") and not OS.has_feature("web_ios")
+
+
+func _is_fullscreen() -> bool:
+	var m := DisplayServer.window_get_mode()
+	return m == DisplayServer.WINDOW_MODE_FULLSCREEN or m == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+
+
+# Browsers allow full screen only just after a click, a key press or a finger
+# lift (not a finger press), so touch activates this item on release.
+func _toggle_fullscreen() -> void:
+	if _is_fullscreen():
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+
+# A short vibration on phones that support it (Android browsers; iOS ignores it).
+func _buzz(ms: int) -> void:
+	if touch_ui:
+		Input.vibrate_handheld(ms)
+
+
+# Tracks whether the player uses fingers or a keyboard and mouse. A mouse click
+# also makes an emulated touch; the mouse event and the frame check keep that
+# touch from counting as a finger.
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey or event is InputEventJoypadButton:
+		touch_ui = false
+	elif event is InputEventMouseButton or event is InputEventMouseMotion:
+		touch_ui = false
+		_mouse_frame = Engine.get_process_frames()
+	elif event is InputEventScreenTouch and event.pressed and Engine.get_process_frames() != _mouse_frame:
+		touch_ui = true
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if portrait:
+		touches.clear()
+		return
 	if event is InputEventScreenTouch:
 		_on_touch(event)
 		return
@@ -451,27 +510,40 @@ func _selectable() -> Array:
 
 func _on_touch(e: InputEventScreenTouch) -> void:
 	if not e.pressed:
+		if touches.get(e.index, "") == "fullscreen" and _item_at(e.position) == "fullscreen":
+			_toggle_fullscreen()
 		touches.erase(e.index)
 		return
 	if _racing_controls_live():
+		if _pause_rect().has_point(e.position):
+			touches[e.index] = "menu"
+			_set_paused(true)
+			synth.play("blip")
+			return
 		var b := _race_button_at(e.position)
 		if b != "":
 			touches[e.index] = b
 			return
 	touches[e.index] = "menu"
-	# A tap during a race that is not on a lever pauses it.
-	if screen == Screen.RACE and not paused and sim.state == RaceSim.State.RACING and e.position.y < 34:
-		_set_paused(true)
+	var id := _item_at(e.position)
+	if id == "":
 		return
-	var items := _items()
-	for it in items:
-		if it["enabled"] and (it["rect"] as Rect2).has_point(e.position):
-			var selectable := _selectable()
-			for j in selectable.size():
-				if selectable[j]["id"] == it["id"]:
-					sel = j
-			_activate(it["id"])
-			return
+	var selectable := _selectable()
+	for j in selectable.size():
+		if selectable[j]["id"] == id:
+			sel = j
+	if id == "fullscreen":
+		touches[e.index] = "fullscreen"
+		synth.play("blip")
+		return
+	_activate(id)
+
+
+func _item_at(p: Vector2) -> String:
+	for it in _items():
+		if it["enabled"] and (it["rect"] as Rect2).has_point(p):
+			return it["id"]
+	return ""
 
 
 func _on_drag(e: InputEventScreenDrag) -> void:
@@ -498,6 +570,10 @@ func _race_button_at(p: Vector2) -> String:
 	return ""
 
 
+func _pause_rect() -> Rect2:
+	return Rect2(VW - 30, 35, 26, 22)
+
+
 func _brake_rect() -> Rect2:
 	return Rect2(6, 220, 132, 46)
 
@@ -520,6 +596,24 @@ func _draw() -> void:
 			_draw_help()
 		Screen.RACE:
 			_draw_race()
+	if portrait:
+		_draw_rotate_prompt()
+
+
+func _draw_rotate_prompt() -> void:
+	draw_rect(Rect2(0, 0, VW, VH), Color("0c1210"))
+	# an upright phone, an arrow, and the same phone on its side
+	_box(Rect2(150, 70, 36, 64), PANEL, MUTED)
+	draw_rect(Rect2(164, 126, 8, 2), MUTED)
+	for i in 5:
+		draw_rect(Rect2(212 + i * 8, 101, 5, 2), WARN)
+	draw_rect(Rect2(254, 97, 2, 10), WARN)
+	draw_rect(Rect2(256, 99, 2, 6), WARN)
+	draw_rect(Rect2(258, 101, 2, 2), WARN)
+	_box(Rect2(276, 84, 64, 36), PANEL, GO)
+	draw_rect(Rect2(280, 98, 2, 8), GO)
+	_txtc("TURN YOUR PHONE SIDEWAYS", VW / 2.0, 160, LAMP, 2)
+	_txtc("LAST STOP PLAYS IN LANDSCAPE", VW / 2.0, 184, MUTED)
 
 
 func _txt(text: String, x: float, y: float, c: Color, s: int = 1) -> void:
@@ -704,7 +798,7 @@ const HELP_LINES := [
 	["", INK],
 	["THROTTLE  HOLD UP / W / RIGHT BUTTON / RT", INK],
 	["BRAKE     HOLD DOWN / S / LEFT BUTTON / LT", INK],
-	["PAUSE ESC, P, OR TAP THE TOP BAR. RESTART R.", INK],
+	["PAUSE  ESC / P / THE II BUTTON.  RESTART  R", INK],
 	["", INK],
 	["STOP NEEDS  HOW FAR A FULL BRAKE CARRIES YOU NOW", MUTED],
 	["PLATFORM IN HOW FAR THE PLATFORM IS", MUTED],
@@ -1143,9 +1237,18 @@ func _draw_levers() -> void:
 	_box(br, Color(STOP, 0.55) if b_on else Color(0, 0, 0, 0.45), STOP)
 	_box(th, Color(GO, 0.55) if t_on else Color(0, 0, 0, 0.45), GO)
 	_txtc("BRAKE", br.get_center().x, br.position.y + 12, INK, 2)
-	_txtc("S / DOWN", br.get_center().x, br.position.y + 32, MUTED)
 	_txtc("THROTTLE", th.get_center().x, th.position.y + 12, INK, 2)
-	_txtc("W / UP", th.get_center().x, th.position.y + 32, MUTED)
+	if touch_ui:
+		_txtc("HOLD", br.get_center().x, br.position.y + 32, MUTED)
+		_txtc("HOLD", th.get_center().x, th.position.y + 32, MUTED)
+	else:
+		_txtc("S / DOWN", br.get_center().x, br.position.y + 32, MUTED)
+		_txtc("W / UP", th.get_center().x, th.position.y + 32, MUTED)
+	# the pause button
+	var pr := _pause_rect()
+	_box(pr, Color(0, 0, 0, 0.45), EDGE.lightened(0.3))
+	draw_rect(Rect2(pr.position.x + 9, pr.position.y + 6, 3, 10), INK)
+	draw_rect(Rect2(pr.position.x + 14, pr.position.y + 6, 3, 10), INK)
 
 
 func _draw_countdown() -> void:
@@ -1201,7 +1304,8 @@ func _draw_result() -> void:
 		note = "PROGRESS NOT SAVED"
 	if note != "":
 		_txtc(note, VW / 2.0, 164, LAMP if saved_ok else STOP)
-	_txtc("SPACE / ENTER TO CHOOSE - R TO RETRY", VW / 2.0, 180, EDGE.lightened(0.3))
+	var hint := "TAP A BUTTON" if touch_ui else "SPACE / ENTER TO CHOOSE - R TO RETRY"
+	_txtc(hint, VW / 2.0, 180, EDGE.lightened(0.3))
 	_draw_items(_items())
 
 
