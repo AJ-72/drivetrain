@@ -39,13 +39,19 @@ export async function serve(dir) {
   };
 }
 
+export const ARGS = [
+  "--autoplay-policy=no-user-gesture-required",
+  "--use-angle=swiftshader",
+  "--enable-unsafe-swiftshader",
+  "--ignore-gpu-blocklist",
+];
+
 export function launch() {
-  return chromium.launch({
-    args: [
-      "--autoplay-policy=no-user-gesture-required",
-      "--use-angle=swiftshader",
-      "--enable-unsafe-swiftshader",
-      "--ignore-gpu-blocklist",
-    ],
-  });
+  return chromium.launch({ args: ARGS });
+}
+
+// A browser with a real profile, for checks that incognito contexts fail
+// (installing a web app is one).
+export function launchWithProfile(dir, options = {}) {
+  return chromium.launchPersistentContext(dir, { args: ARGS, ...options });
 }

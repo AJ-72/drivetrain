@@ -54,6 +54,11 @@ pauses the race and asks to be turned sideways. The web title screen has a
 FULL SCREEN item (not on iPhone and iPad, where Safari has no full-screen API
 for pages).
 
+The web build is also an installable app (browser menu > **Add to Home
+screen** or **Install app**). The app opens full screen and locked to
+landscape, with no browser bar. Use it on phones whose browser keeps a
+full-screen note over the game. The FULL SCREEN item hides in the app.
+
 ## Checks
 
 ```
@@ -88,4 +93,5 @@ and publishes it to GitHub Pages: *Last Stop* at the site root, the original
 HTML game at `/classic/`. Pull requests run the same export without
 publishing. Each build also runs `tools/web-audio-check.mjs` (the game makes
 sound) and `tools/web-touch-check.mjs` (a finger tap reaches the menus) in
-headless Chromium. One-time setup: Settings > Pages > Source: **GitHub Actions**.
+headless Chromium, and `tools/web-app-check.mjs` checks that it installs as an
+app. One-time setup: Settings > Pages > Source: **GitHub Actions**.

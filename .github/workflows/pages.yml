@@ -4,7 +4,7 @@ name: Publish to GitHub Pages
 #   /          Last Stop (Godot web build, no threads, so no special headers)
 #   /classic/  the original index.html
 # Every build plays the export in headless Chromium and fails if it is silent
-# or if a finger tap does not reach the menus.
+# if a finger tap does not reach the menus, or if it does not install as an app.
 # Pull requests and claude/* branches build the site. Only main deploys.
 
 on:
@@ -98,6 +98,9 @@ jobs:
 
       - name: Check that touch works in the web build
         run: node tools/web-touch-check.mjs godot/export/web
+
+      - name: Check that the web build installs as a phone app
+        run: node tools/web-app-check.mjs godot/export/web
 
       - name: Assemble the site
         run: |
