@@ -4,7 +4,28 @@ A pixel-art train game made with Godot 4.4+. Stop your train on the platform
 before the rival stops. Arriving first does not win. Stopping does.
 
 This is the indie version of the browser game in `../index.html`. It uses the
-same physics, step for step.
+same physics, step for step, plus a brake handle with notches.
+
+## The brake handle
+
+The brake has notches 0 to 3. Each tap on BRAKE (`S` / `Down`) adds a notch,
+and each tap on THROTTLE (`W` / `Up`) takes one off. The brake stays on when
+you let go. Power works only at notch 0.
+
+More notches brake harder, but the rail holds only so much. The grip falls
+with speed and with a damp or wet rail. A notch that asks for more than the
+rail holds locks the wheels: the train slides, sparks fly, and it brakes at
+half of what the rail could hold. Take a notch off to stop the slide.
+
+| Rail | Notch 3 | Notch 2 | Notch 1 |
+|---|---|---|---|
+| DRY | slides above 126 km/h | never slides | never slides |
+| DAMP | slides above 13 km/h | slides above 216 km/h | never slides |
+| WET | always slides | slides above 133 km/h | never slides |
+
+The best stop starts on a lower notch and adds notches as the train slows.
+STOP NEEDS shows that best stop. The dashed marker shows where the notch you
+have now stops you.
 
 ## Open and run
 
@@ -16,7 +37,7 @@ same physics, step for step.
 
 | Part | Where |
 |---|---|
-| Physics (a port of `index.html`) | `scripts/race_sim.gd` |
+| Physics (`index.html` plus brake notches) | `scripts/race_sim.gd` |
 | The campaign route, free-race rules, liveries | `scripts/stations.gd` |
 | Screens, pixel-art scene, HUD, input | `scripts/game.gd` |
 | 5x7 bitmap font drawn with rectangles | `scripts/pixel_font.gd` |
@@ -42,8 +63,9 @@ in code at 480x270 and scaled up by whole numbers.
 
 | | Keyboard | Touch / mouse | Gamepad |
 |---|---|---|---|
-| Throttle | `W` / `Up` | right button | RT |
-| Brake | `S` / `Down` | left button | LT |
+| Throttle (at notch 0) | hold `W` / `Up` | hold right button | RT |
+| Brake notch +1 | `S` / `Down` | tap left button | LT |
+| Brake notch -1 | `W` / `Up` | tap right button | RT |
 | Pause | `Esc` / `P` | the II button, top right | |
 | Restart | `R` | pause menu | |
 | Menus | arrows, `Enter`, `Esc` | tap | D-pad, A, B |
@@ -66,12 +88,13 @@ node tools/campaign-check.mjs                          # from the repo root
 godot --headless --path godot -s res://tests/test_sim.gd
 ```
 
-`campaign-check.mjs` sweeps every brake point at each station. It fails if a
-station cannot be won or its winning band is under 60 m. It prints the par
-times that `stations.gd` uses. Run it after any change to a station.
+`campaign-check.mjs` sweeps every brake point at each station, with the best
+stop after the brake point. It fails if a station cannot be won or its winning
+band is under 60 m. It prints the par times that `stations.gd` uses. Run it
+after any change to a station or to the brake model.
 
-`test_sim.gd` pins the GDScript physics to reference numbers from the same
-script (which matches `index.html` exactly), then drives every screen of the
+`test_sim.gd` pins the GDScript physics to reference numbers printed by
+`node tools/campaign-check.mjs --cases`, then drives every screen of the
 game. The GitHub Actions workflow `.github/workflows/godot.yml` runs both on
 each push that touches `godot/`.
 
