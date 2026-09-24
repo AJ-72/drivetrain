@@ -1,0 +1,106 @@
+name: Publish to GitHub Pages
+
+# Builds the Last Stop web export and publishes it with the original HTML game.
+#   /          Last Stop (Godot web build, no threads, so no special headers)
+#   /classic/  the original index.html
+# Pull requests build the site to prove the export works. Only main deploys.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "godot/**"
+      - "index.html"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "godot/**"
+      - "index.html"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.4.1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot
+        run: |
+          curl -fsSL -o godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot-bin
+          chmod +x godot-bin
+
+      - name: Cache the web export template
+        id: template-cache
+        uses: actions/cache@v4
+        with:
+          path: web_nothreads_release.zip
+          key: godot-web-template-${{ env.GODOT_VERSION }}
+
+      - name: Download the web export template
+        if: steps.template-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o templates.tpz \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q -j templates.tpz templates/web_nothreads_release.zip -d .
+          rm templates.tpz
+
+      - name: Install the web export template
+        run: |
+          dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dir"
+          cp web_nothreads_release.zip "$dir/"
+
+      - name: Import the project
+        run: ./godot-bin --headless --path godot --import
+
+      - name: Export the web build
+        run: |
+          set -o pipefail
+          mkdir -p godot/export/web
+          ./godot-bin --headless --path godot --export-release "Web" export/web/index.html 2>&1 | tee export.log
+          test -f godot/export/web/index.html
+          test -f godot/export/web/index.wasm
+          test -f godot/export/web/index.pck
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|Compile Error" export.log; then
+            echo "The export reported an error"; exit 1
+          fi
+
+      - name: Assemble the site
+        run: |
+          mkdir -p site/classic
+          cp -R godot/export/web/. site/
+          cp index.html site/classic/index.html
+          ls -la site site/classic
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
