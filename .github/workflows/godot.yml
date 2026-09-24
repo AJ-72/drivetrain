@@ -1,0 +1,54 @@
+name: Last Stop (Godot)
+
+on:
+  push:
+    paths:
+      - "godot/**"
+      - "tools/campaign-check.mjs"
+      - ".github/workflows/godot.yml"
+  pull_request:
+    paths:
+      - "godot/**"
+      - "tools/campaign-check.mjs"
+      - ".github/workflows/godot.yml"
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.4.1"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Campaign fairness check
+        run: node tools/campaign-check.mjs
+
+      - name: Download Godot
+        run: |
+          curl -fsSL -o godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot-bin
+          chmod +x godot-bin
+
+      - name: Import the project
+        run: ./godot-bin --headless --path godot --import 2>&1 | tee import.log
+
+      - name: Run the checks
+        run: |
+          set -o pipefail
+          ./godot-bin --headless --path godot -s res://tests/test_sim.gd 2>&1 | tee test.log
+
+      - name: Fail on any script error
+        run: |
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|Compile Error" import.log test.log; then
+            echo "Godot reported a script error"; exit 1
+          fi
+          grep -q "ALL CHECKS PASSED" test.log

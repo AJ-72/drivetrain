@@ -7,6 +7,10 @@ browser and it runs.
 
 **Play it:** https://claude.ai/code/artifact/17059745-690c-4ab0-af19-5f568e4e56b6
 
+**Indie version:** `godot/` holds *Last Stop*, a Godot 4 remake of this game with
+pixel art, synthesized sound and music, an 8-station campaign, a free-race
+career, and export presets for web and desktop. See [`godot/README.md`](godot/README.md).
+
 ---
 
 ## For a player
