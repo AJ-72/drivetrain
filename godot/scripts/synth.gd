@@ -5,8 +5,9 @@ extends Node
 ## blips, the jingles and the music loop. There are no audio files.
 ##
 ## Pre-rendered buffers (rather than an AudioStreamGenerator filled each frame)
-## work the same in every export, including the single-threaded web build,
-## where the browser plays samples directly.
+## work the same in every export. The web build mixes them in Godot ("Stream"
+## playback, set in project.godot), because in the browser "Sample" mode these
+## runtime buffers and buses played nothing.
 
 const RATE := 22050
 const MUSIC_RATE := 16000
