@@ -313,9 +313,16 @@ func _items() -> Array:
 					"rect": Rect2(VW / 2.0 - 110, 120 + i * 19, 220, 17),
 					"enabled": ids[i] != "free" or save.campaign_done()})
 		Screen.MAP:
+			# Each station owns its whole slice of the line, so a finger that
+			# lands near a small dot still selects it.
+			var slice := _map_x(1) - _map_x(0)
 			for i in Stations.count():
-				items.append({"id": "st%d" % i, "label": "", "rect": Rect2(_map_x(i) - 14, 44, 28, 34),
-					"enabled": true, "hidden": true})
+				items.append({"id": "st%d" % i, "label": "", "enabled": true, "hidden": true,
+					"rect": Rect2(_map_x(i) - slice / 2.0, 36, slice, 50)})
+			items.append({"id": "prev", "label": "<", "rect": Rect2(4, 134, 32, 44),
+				"enabled": map_sel > 0, "button": true})
+			items.append({"id": "next", "label": ">", "rect": Rect2(VW - 36, 134, 32, 44),
+				"enabled": map_sel < Stations.count() - 1, "button": true})
 			items.append({"id": "back", "label": "BACK", "rect": Rect2(12, 238, 120, 24), "enabled": true, "button": true})
 			items.append({"id": "race", "label": "RACE", "rect": Rect2(VW - 132, 238, 120, 24),
 				"enabled": save.station_unlocked(map_sel), "button": true})
@@ -383,6 +390,10 @@ func _activate(id: String) -> void:
 			get_tree().quit()
 		"back":
 			_go(Screen.TITLE)
+		"prev":
+			map_sel = maxi(0, map_sel - 1)
+		"next":
+			map_sel = mini(Stations.count() - 1, map_sel + 1)
 		"race":
 			if save.station_unlocked(map_sel):
 				_start_race("campaign", map_sel)
