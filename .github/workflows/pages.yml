@@ -3,19 +3,22 @@ name: Publish to GitHub Pages
 # Builds the Last Stop web export and publishes it with the original HTML game.
 #   /          Last Stop (Godot web build, no threads, so no special headers)
 #   /classic/  the original index.html
-# Pull requests build the site to prove the export works. Only main deploys.
+# Every build plays the export in headless Chromium and fails if it is silent.
+# Pull requests and claude/* branches build the site. Only main deploys.
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
     paths:
       - "godot/**"
       - "index.html"
+      - "tools/web-audio-check.mjs"
       - ".github/workflows/pages.yml"
   pull_request:
     paths:
       - "godot/**"
       - "index.html"
+      - "tools/web-audio-check.mjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -79,6 +82,18 @@ jobs:
           if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|Compile Error" export.log; then
             echo "The export reported an error"; exit 1
           fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+
+      - name: Check that the web build makes sound
+        run: node tools/web-audio-check.mjs godot/export/web
 
       - name: Assemble the site
         run: |
