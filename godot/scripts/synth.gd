@@ -73,7 +73,9 @@ func play(sound: String, pitch: float = 1.0, volume_db: float = 0.0) -> void:
 
 
 ## Called every frame during a race. speed is in metres per second.
-func set_train(speed: float, throttle: bool, braking: bool, running: bool) -> void:
+## brake is the notch as a fraction of the top notch (0 to 1). A sliding wheel
+## squeals louder and higher.
+func set_train(speed: float, throttle: bool, brake: float, sliding: bool, running: bool) -> void:
 	if not running:
 		_engine.volume_db = move_toward(_engine.volume_db, -80.0, 4.0)
 		_squeal.volume_db = -80.0
@@ -87,11 +89,13 @@ func set_train(speed: float, throttle: bool, braking: bool, running: bool) -> vo
 	var engine_level := 0.22 + (0.30 if throttle else 0.0) + clampf(speed / 60.0, 0.0, 0.2)
 	_engine.volume_db = linear_to_db(engine_level)
 	var target := 0.0
-	if braking and speed > 0.5:
-		target = clampf(speed / 22.0, 0.15, 0.55)
+	if brake > 0.0 and speed > 0.5:
+		target = clampf(speed / 22.0, 0.15, 0.55) * (0.4 + 0.6 * brake)
+		if sliding:
+			target = 0.85
 	_squeal_level = move_toward(_squeal_level, target, 0.06)
 	_squeal.volume_db = linear_to_db(maxf(_squeal_level, 0.0001))
-	_squeal.pitch_scale = 0.85 + clampf(speed / 40.0, 0.0, 0.4)
+	_squeal.pitch_scale = 0.85 + clampf(speed / 40.0, 0.0, 0.4) + (0.35 if sliding else 0.0)
 
 
 func stop_train() -> void:

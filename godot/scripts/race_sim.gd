@@ -1,8 +1,14 @@
 class_name RaceSim
 extends RefCounted
-## The race physics. A line-for-line port of stepTrain(), judge() and step() in
-## ../index.html. Tools/campaign-check.mjs holds the same arithmetic, and
-## tests/test_sim.gd pins this port to its numbers.
+## The race physics: stepTrain(), judge() and step() from ../index.html, plus
+## Last Stop's brake notches and wheel slide. tools/campaign-check.mjs holds the
+## same arithmetic, and tests/test_sim.gd pins this port to its numbers.
+##
+## Brake notches: the player's brake is a handle with notches 0 to 3. Each notch
+## asks for a deceleration. The rail holds at most adhesion(speed), which falls
+## with speed and with a wet rail. A notch that asks for more locks the wheels,
+## and a sliding wheel brakes at only SLIDE_FACTOR of the limit. The rival's
+## brake has no notches and never slides.
 ##
 ## Invariants carried over from the HTML game:
 ## - Only step_train() writes a train's speed. Only _judge() writes result.
@@ -28,6 +34,13 @@ const STEP_MS := 1000.0 / 60.0
 const MAX_FRAME_DELTA_MS := 50.0
 
 const GRIPS := {"DRY": 1.0, "DAMP": 0.8, "WET": 0.65}
+
+const NOTCH_DECEL := [0.0, 0.9, 1.6, 2.5]
+const MAX_NOTCH := 3
+const ADHESION_BASE := 3.2
+const ADHESION_FALL := 0.02
+const SLIDE_FACTOR := 0.5
+const PREDICT_DT := 1.0 / 30.0
 
 enum State { IDLE, RACING, RESULT }
 
@@ -56,7 +69,8 @@ var grip := 1.0
 var steps := 0
 var elapsed_ms := 0
 var throttle := false
-var brake := false
+var brake_notch := 0
+var sliding := false
 
 
 ## config keys: platform_start, platform_width, rail, rival, boost.
@@ -85,6 +99,9 @@ func start(config: Dictionary) -> void:
 	rival_max = rival_base
 	steps = 0
 	elapsed_ms = 0
+	throttle = false
+	brake_notch = 0
+	sliding = false
 
 
 static func resistance(v: float) -> float:
@@ -104,15 +121,55 @@ func brake_distance(speed: float, decel: float) -> float:
 	return stop_distance(speed, decel * grip)
 
 
-## Returns [pos, speed] after one fixed step.
+## The most the rail can hold at this speed.
+func adhesion(speed: float) -> float:
+	return grip * maxf(0.0, ADHESION_BASE - ADHESION_FALL * speed)
+
+
+func slides(notch: int, speed: float) -> bool:
+	return notch > 0 and NOTCH_DECEL[notch] > adhesion(speed)
+
+
+## The strongest notch that does not slide at this speed.
+func safe_notch(speed: float) -> int:
+	for n in range(MAX_NOTCH, 0, -1):
+		if not slides(n, speed):
+			return n
+	return 1
+
+
+## Where the train comes to rest from here. notch 0 means the best stop: the
+## strongest notch that does not slide, changed as the speed falls. Integrated
+## with a coarser step than the race, so it can be off by a metre or two.
+func predict_stop(notch: int) -> float:
+	var pos := player_pos
+	var v := player_speed
+	var n := 0
+	while v > 0.0 and n < 6000:
+		var k := notch if notch > 0 else safe_notch(v)
+		var want: float = NOTCH_DECEL[k]
+		var limit := adhesion(v)
+		var a := -(limit * SLIDE_FACTOR if want > limit else want) - resistance(v)
+		pos += v * PREDICT_DT
+		v += a * PREDICT_DT
+		n += 1
+	return pos
+
+
+## Returns [pos, speed] after one fixed step. notch > 0 is a player brake
+## notch; the rival passes brk instead.
 func step_train(
 	pos: float, speed: float, thr: bool, brk: bool,
-	fmax: float, power: float, brake_decel: float, cap: float
+	fmax: float, power: float, brake_decel: float, cap: float, notch: int = 0
 ) -> Array:
 	var v := speed
 	var res := resistance(v)
 	var a: float
-	if brk:
+	if notch > 0:
+		var want: float = NOTCH_DECEL[notch]
+		var limit := adhesion(v)
+		a = -(limit * SLIDE_FACTOR if want > limit else want) - res
+	elif brk:
 		a = -(brake_decel * grip) - res
 	elif thr:
 		a = minf(fmax, power / maxf(v, 1.0)) - res
@@ -136,8 +193,10 @@ func step() -> void:
 	steps += 1
 	elapsed_ms = roundi(steps * STEP_MS)
 
-	var p := step_train(player_pos, player_speed, throttle and not brake, brake,
-		PLAYER_FMAX, PLAYER_POWER, BRAKE_DECEL, INF)
+	brake_notch = clampi(brake_notch, 0, MAX_NOTCH)
+	sliding = slides(brake_notch, player_speed) and player_speed > 0.0
+	var p := step_train(player_pos, player_speed, throttle and brake_notch == 0, false,
+		PLAYER_FMAX, PLAYER_POWER, BRAKE_DECEL, INF, brake_notch)
 	player_pos = p[0]
 	player_speed = p[1]
 	if player_pos > ARM_AFTER_M:
@@ -195,8 +254,9 @@ func _finish(r: String) -> void:
 	state = State.RESULT
 
 
+## Where the train stops on the notch it has now (the best stop if none).
 func stop_at() -> float:
-	return player_pos + brake_distance(player_speed, BRAKE_DECEL)
+	return predict_stop(brake_notch)
 
 
 func platform_centre() -> float:

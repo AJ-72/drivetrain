@@ -65,7 +65,7 @@ var acc_ms := 0.0
 var t := 0.0
 var last_joint := 0
 var particles: Array = []
-var touches := {}          # touch index -> "throttle", "brake" or "menu"
+var touches := {}          # touch index -> "throttle", "notch", "menu" or "fullscreen"
 var outcome := {}          # the result of the last race, for the overlay
 var saved_ok := true
 var _finish_time := 0.0
@@ -73,6 +73,9 @@ var touch_ui := false      # the last input was a finger: hide key hints, vibrat
 var portrait := false      # a touch screen held upright: the game waits
 var portrait_test := false # lets the headless test show the portrait prompt
 var _mouse_frame := -1
+var _throttle_latch := false # a throttle key press that took a notch off gives no power
+var _pred_best := 0.0      # where the best stop ends, worked out once per frame
+var _pred_now := 0.0       # where the stop on the current notch ends
 var installed_app := false # started from the home screen: already full screen
 
 
@@ -131,7 +134,8 @@ func _process(delta: float) -> void:
 		_race_process(delta)
 	_update_particles(delta)
 	var running := screen == Screen.RACE and not paused and sim.state == RaceSim.State.RACING
-	synth.set_train(sim.player_speed, sim.throttle, sim.brake, running)
+	synth.set_train(sim.player_speed, sim.throttle, float(sim.brake_notch) / RaceSim.MAX_NOTCH,
+		sim.sliding, running)
 	synth.set_music_level(0.35 if screen == Screen.RACE else 1.0)
 	queue_redraw()
 
@@ -153,8 +157,7 @@ func _race_process(delta: float) -> void:
 		return
 	if sim.state != RaceSim.State.RACING:
 		return
-	sim.throttle = _held("throttle")
-	sim.brake = _held("brake")
+	sim.throttle = sim.brake_notch == 0 and _held("throttle")
 	# The clamp is the only guard against a long frame. Without it a stall
 	# would teleport the train past the platform.
 	acc_ms += minf(delta * 1000.0, RaceSim.MAX_FRAME_DELTA_MS)
@@ -168,7 +171,7 @@ func _race_process(delta: float) -> void:
 
 
 func _held(action: String) -> bool:
-	if Input.is_action_pressed(action):
+	if Input.is_action_pressed(action) and not (action == "throttle" and _throttle_latch):
 		return true
 	for k in touches:
 		if touches[k] == action:
@@ -182,12 +185,13 @@ func _after_step() -> void:
 		last_joint = joint
 		synth.play("clack", rng.randf_range(0.9, 1.1), -6.0)
 	var nose_px := _x(sim.player_pos)
-	if sim.brake and sim.player_speed > 3.0 and rng.randf() < 0.6:
+	var spark_odds := 0.95 if sim.sliding else 0.2 * sim.brake_notch
+	if sim.brake_notch > 0 and sim.player_speed > 3.0 and rng.randf() < spark_odds:
 		for w in [-5, -12, -19]:
 			particles.append({"x": sim.player_pos + (w / PX_PER_M), "y": float(PLAYER_RAIL_Y - 1),
 				"vx": rng.randf_range(-12.0, 4.0), "vy": rng.randf_range(-40.0, -10.0),
 				"life": rng.randf_range(0.15, 0.35), "c": WARN if rng.randf() < 0.5 else LAMP, "g": 160.0})
-	if sim.throttle and not sim.brake and rng.randf() < 0.18 and nose_px > -20 and nose_px < VW + 20:
+	if sim.throttle and rng.randf() < 0.18 and nose_px > -20 and nose_px < VW + 20:
 		particles.append({"x": sim.player_pos - 8.0 / PX_PER_M, "y": float(PLAYER_RAIL_Y - 16),
 			"vx": -sim.player_speed * 0.3, "vy": rng.randf_range(-14.0, -8.0),
 			"life": rng.randf_range(0.5, 0.9), "c": Color(0.75, 0.75, 0.78, 0.7), "g": 0.0})
@@ -219,6 +223,7 @@ func _start_race(new_mode: String, index: int) -> void:
 	sim.state = RaceSim.State.IDLE
 	countdown = COUNTDOWN_S
 	paused = false
+	_throttle_latch = false
 	acc_ms = 0.0
 	last_joint = 0
 	particles.clear()
@@ -470,10 +475,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_drag(event)
 		return
 	if screen == Screen.RACE and not paused and sim.state != RaceSim.State.RESULT:
+		if event.is_action_released("throttle"):
+			_throttle_latch = false
 		if event.is_action_pressed("pause"):
 			_set_paused(true)
 		elif event.is_action_pressed("restart"):
 			_start_race(mode, station)
+		elif event.is_action_pressed("brake"):
+			_notch(1)
+		elif event.is_action_pressed("throttle") and sim.brake_notch > 0:
+			_notch(-1)
+			_throttle_latch = true
 		return
 	if screen == Screen.RACE and paused and event.is_action_pressed("pause"):
 		_set_paused(false)
@@ -533,8 +545,16 @@ func _on_touch(e: InputEventScreenTouch) -> void:
 			synth.play("blip")
 			return
 		var b := _race_button_at(e.position)
-		if b != "":
-			touches[e.index] = b
+		if b == "brake":
+			touches[e.index] = "notch"
+			_notch(1)
+			return
+		if b == "throttle":
+			if sim.brake_notch > 0:
+				touches[e.index] = "notch"
+				_notch(-1)
+			else:
+				touches[e.index] = "throttle"
 			return
 	touches[e.index] = "menu"
 	var id := _item_at(e.position)
@@ -559,15 +579,21 @@ func _item_at(p: Vector2) -> String:
 
 
 func _on_drag(e: InputEventScreenDrag) -> void:
-	if not touches.has(e.index) or touches[e.index] == "menu":
-		return
-	# A finger that slides off a lever releases it; sliding onto the other
-	# lever takes that one.
-	var b := _race_button_at(e.position)
-	if b == "":
+	# A finger that slides off the throttle cuts the power. Notches change only
+	# on a tap, never on a slide.
+	if touches.get(e.index, "") == "throttle" and _race_button_at(e.position) != "throttle":
 		touches.erase(e.index)
-	else:
-		touches[e.index] = b
+
+
+## Moves the brake handle one notch. Only while the train runs.
+func _notch(d: int) -> void:
+	if sim.state != RaceSim.State.RACING:
+		return
+	var n := clampi(sim.brake_notch + d, 0, RaceSim.MAX_NOTCH)
+	if n == sim.brake_notch:
+		return
+	sim.brake_notch = n
+	synth.play("clack", 1.5 + 0.15 * n, -4.0)
 
 
 func _racing_controls_live() -> bool:
@@ -808,16 +834,16 @@ const HELP_LINES := [
 	["BEFORE THE RIVAL FINISHES ITS OWN STOP.", GO],
 	["ARRIVING FIRST DOES NOT WIN. STOPPING DOES.", WARN],
 	["", INK],
-	["THROTTLE  HOLD UP / W / RIGHT BUTTON / RT", INK],
-	["BRAKE     HOLD DOWN / S / LEFT BUTTON / LT", INK],
+	["THROTTLE  HOLD UP / W / RIGHT BUTTON (AT NOTCH 0)", INK],
+	["BRAKE     TAP DOWN / S / LEFT: +1 NOTCH. UP / RIGHT: -1", INK],
 	["PAUSE  ESC / P / THE II BUTTON.  RESTART  R", INK],
 	["", INK],
-	["STOP NEEDS  HOW FAR A FULL BRAKE CARRIES YOU NOW", MUTED],
+	["STOP NEEDS  HOW FAR THE BEST STOP CARRIES YOU NOW", MUTED],
 	["PLATFORM IN HOW FAR THE PLATFORM IS", MUTED],
-	["BRAKE WHEN THE TWO ARE ABOUT EQUAL.", INK],
+	["BRAKE WHEN THE TWO ARE ABOUT EQUAL. MORE NOTCHES BRAKE HARDER.", INK],
 	["THE DASHED MARKER SHOWS WHERE YOU WOULD STOP.", INK],
 	["IT TURNS GREEN INSIDE THE PLATFORM.", INK],
-	["A WET RAIL CARRIES YOU ABOUT 35% FURTHER.", WARN],
+	["TOO MANY NOTCHES WHEN FAST OR WET LOCK THE WHEELS: A SLIDE.", WARN],
 	["ONE STOP ONLY. YOU CANNOT CREEP FORWARD AGAIN.", STOP],
 	["PHONE: BROWSER MENU > ADD TO HOME SCREEN FOR A FULL SCREEN APP", MUTED],
 ]
@@ -848,6 +874,9 @@ func _theme_index() -> int:
 
 
 func _draw_race() -> void:
+	if sim.state == RaceSim.State.RACING:
+		_pred_best = sim.predict_stop(0)
+		_pred_now = sim.predict_stop(sim.brake_notch) if sim.brake_notch > 0 else _pred_best
 	var cam := _cam()
 	var theme := _theme_index()
 	var th: Array = THEMES[theme]
@@ -1075,7 +1104,7 @@ func _draw_home_signal() -> void:
 func _draw_stop_marker() -> void:
 	if sim.state != RaceSim.State.RACING or sim.player_speed <= 0.0:
 		return
-	var stop_at := sim.stop_at()
+	var stop_at := _pred_now
 	var inside := stop_at >= sim.platform_start and stop_at <= sim.platform_end
 	var c := GO if inside else (STOP if stop_at > sim.platform_end else MUTED)
 	var x := _x(stop_at)
@@ -1189,8 +1218,8 @@ func _wheel(x: int, rail_y: int, spoke: int) -> void:
 func _draw_hud() -> void:
 	draw_rect(Rect2(0, 0, VW, 30), PANEL)
 	draw_rect(Rect2(0, 30, VW, 1), EDGE)
-	var needs := sim.brake_distance(sim.player_speed, RaceSim.BRAKE_DECEL)
-	var stop_at := sim.player_pos + needs
+	var stop_at := _pred_best if sim.state == RaceSim.State.RACING else sim.player_pos
+	var needs := stop_at - sim.player_pos
 	var needs_c := INK
 	if sim.state == RaceSim.State.RACING:
 		if stop_at > sim.platform_end:
@@ -1226,7 +1255,12 @@ func _draw_callout() -> void:
 		return
 	var text := ""
 	var c := WARN
-	if sim.rival_braking:
+	if sim.sliding:
+		text = "WHEEL SLIDE - TAP THROTTLE TO EASE" if touch_ui else "WHEEL SLIDE - EASE THE BRAKE (UP)"
+		c = STOP
+		if fmod(t, 0.3) > 0.2:
+			return
+	elif sim.rival_braking:
 		text = "RIVAL IS STOPPING - BRING IT TO A STAND"
 		c = STOP
 		if fmod(t, 0.5) > 0.3:
@@ -1245,18 +1279,29 @@ func _draw_levers() -> void:
 		return
 	var br := _brake_rect()
 	var th := _throttle_rect()
-	var b_on := sim.brake or _held("brake")
-	var t_on := (sim.throttle or _held("throttle")) and not b_on
-	_box(br, Color(STOP, 0.55) if b_on else Color(0, 0, 0, 0.45), STOP)
+	var notch := sim.brake_notch
+	var b_on := notch > 0
+	var t_on := sim.throttle or (notch == 0 and _held("throttle"))
+	var b_fill := Color(STOP, 0.2 + 0.15 * notch) if b_on else Color(0, 0, 0, 0.45)
+	if sim.sliding and fmod(t, 0.3) < 0.15:
+		b_fill = Color(WARN, 0.7)
+	_box(br, b_fill, STOP)
 	_box(th, Color(GO, 0.55) if t_on else Color(0, 0, 0, 0.45), GO)
-	_txtc("BRAKE", br.get_center().x, br.position.y + 12, INK, 2)
-	_txtc("THROTTLE", th.get_center().x, th.position.y + 12, INK, 2)
+	_txtc("BRAKE", br.get_center().x, br.position.y + 5, INK, 2)
+	# one lamp for each notch
+	for i in RaceSim.MAX_NOTCH:
+		var lit := i < notch
+		var lamp := Rect2(br.get_center().x - 23 + i * 16, br.position.y + 23, 14, 6)
+		draw_rect(lamp, (WARN if sim.sliding else STOP) if lit else Color(0, 0, 0, 0.5))
+		if not lit:
+			_box(lamp, Color(0, 0, 0, 0), EDGE.lightened(0.3))
+	_txtc("RELEASE" if b_on else "THROTTLE", th.get_center().x, th.position.y + 5, INK, 2)
 	if touch_ui:
-		_txtc("HOLD", br.get_center().x, br.position.y + 32, MUTED)
-		_txtc("HOLD", th.get_center().x, th.position.y + 32, MUTED)
+		_txtc("TAP: NOTCH +1", br.get_center().x, br.position.y + 34, MUTED)
+		_txtc("TAP: NOTCH -1" if b_on else "HOLD FOR POWER", th.get_center().x, th.position.y + 34, MUTED)
 	else:
-		_txtc("S / DOWN", br.get_center().x, br.position.y + 32, MUTED)
-		_txtc("W / UP", th.get_center().x, th.position.y + 32, MUTED)
+		_txtc("S / DOWN: NOTCH +1", br.get_center().x, br.position.y + 34, MUTED)
+		_txtc("W / UP: NOTCH -1" if b_on else "HOLD W / UP", th.get_center().x, th.position.y + 34, MUTED)
 	# the pause button
 	var pr := _pause_rect()
 	_box(pr, Color(0, 0, 0, 0.45), EDGE.lightened(0.3))

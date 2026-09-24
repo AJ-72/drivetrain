@@ -3,14 +3,15 @@
 //
 //   node tools/campaign-check.mjs
 //
-// For each station it sweeps every brake point (full power, then full brake)
-// and reports the winning band, the fastest winning time, and the par time.
-// It exits 1 if a station is unwinnable or its band is narrower than MIN_BAND_M.
+// For each station it sweeps every brake point (full power, then an expert stop:
+// the strongest brake notch that does not slide, notch by notch) and reports the
+// winning band, the fastest winning time, and the par time. It exits 1 if a
+// station is unwinnable or its band is narrower than MIN_BAND_M.
 //
-// The physics below is a copy of stepTrain() and step() in index.html, with the
-// per-station values passed in instead of drawn at random. The GDScript port in
-// godot/scripts/race_sim.gd is checked against the same reference values by
-// godot/tests/test_sim.gd.
+// The physics is stepTrain() and step() from index.html plus Last Stop's brake
+// notches and wheel slide. godot/scripts/race_sim.gd holds the same arithmetic,
+// and godot/tests/test_sim.gd pins it to reference values printed by
+//   node tools/campaign-check.mjs --cases
 
 const K = {
   TRACK_LENGTH_M: 2000,
@@ -21,6 +22,25 @@ const K = {
   ARM_AFTER_M: 50, STOP_EPSILON: 0.05, FIXED_DT: 1 / 60
 };
 const GRIP = { DRY: 1.0, DAMP: 0.8, WET: 0.65 };
+
+// Brake notches: the deceleration each notch asks for, in m/s^2.
+export const NOTCH_DECEL = [0, 0.9, 1.6, 2.5];
+// The rail holds at most grip * (ADHESION_BASE - ADHESION_FALL * speed). A notch
+// that asks for more locks the wheels, and a sliding wheel brakes at only
+// SLIDE_FACTOR of that limit.
+export const ADHESION_BASE = 3.2;
+export const ADHESION_FALL = 0.02;
+export const SLIDE_FACTOR = 0.5;
+
+export function adhesion(v, grip) {
+  return grip * Math.max(0, ADHESION_BASE - ADHESION_FALL * v);
+}
+
+// The strongest notch that does not slide at this speed.
+export function safeNotch(v, grip) {
+  for (let n = 3; n >= 1; n--) if (NOTCH_DECEL[n] <= adhesion(v, grip)) return n;
+  return 1;
+}
 
 // Keep in step with godot/scripts/stations.gd.
 export const STATIONS = [
@@ -42,11 +62,16 @@ function stopDistance(v, decel) {
   return Math.log(1 + (K.RES_R2 * v * v) / b) / (2 * K.RES_R2);
 }
 
-function stepTrain(t, throttle, brake, spec, cap, grip) {
+// notch > 0 is a player brake notch. The rival passes brake = true instead.
+function stepTrain(t, throttle, brake, spec, cap, grip, notch = 0) {
   const v = t.speed;
   const res = K.RES_R0 + K.RES_R2 * v * v;
   let a;
-  if (brake) a = -(spec.brake * grip) - res;
+  if (notch > 0) {
+    const limit = adhesion(v, grip);
+    const want = NOTCH_DECEL[notch];
+    a = -(want > limit ? limit * SLIDE_FACTOR : want) - res;
+  } else if (brake) a = -(spec.brake * grip) - res;
   else if (throttle) a = Math.min(spec.fmax, spec.power / Math.max(v, 1)) - res;
   else a = -res;
   t.pos += t.speed * K.FIXED_DT;
@@ -56,8 +81,9 @@ function stepTrain(t, throttle, brake, spec, cap, grip) {
   if (t.speed < 0) t.speed = 0;
 }
 
-// Runs one race: full power until the nose passes brakeAt, then full brake.
-export function race(st, brakeAt) {
+// Runs one race: full power until the nose passes brakeAt, then the expert stop
+// (or a fixed notch, if one is given).
+export function race(st, brakeAt, fixedNotch = 0) {
   const grip = GRIP[st.rail];
   const pStart = st.start, pEnd = st.start + st.width, target = st.start + st.width / 2;
   const p = { pos: 0, speed: 0 }, r = { pos: 0, speed: 0 };
@@ -67,7 +93,8 @@ export function race(st, brakeAt) {
   while (steps < 60 * 600) {
     steps += 1;
     const brake = p.pos >= brakeAt;
-    stepTrain(p, !brake, brake, pSpec, Infinity, grip);
+    const notch = brake ? (fixedNotch || safeNotch(p.speed, grip)) : 0;
+    stepTrain(p, !brake, false, pSpec, Infinity, grip, notch);
     if (p.pos > K.ARM_AFTER_M) pArmed = true;
     if (!rDone) {
       const lead = p.pos - r.pos;
@@ -112,4 +139,40 @@ function check() {
   process.exit(failed ? 1 : 0);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) check();
+// Reference races for godot/tests/test_sim.gd: [label, rail, start, width,
+// rival, boost, brake at, notch (0 = expert), result, steps, position].
+function cases() {
+  const rows = [
+    ["dry expert", "DRY", 1300, 240, 30, 3, 900, 0],
+    ["wet expert", "WET", 1520, 240, 33, 3, 870, 0],
+    ["damp late brake", "DAMP", 1400, 240, 28.5, 3, 1000, 0],
+    ["undershot", "DRY", 1450, 240, 31, 3, 700, 0],
+    ["wet late brake", "WET", 1300, 240, 29, 3, 1200, 0],
+    ["full power overshoots", "DRY", 1300, 240, 30, 3, 1e9, 0],
+    ["wet notch 3 slides, rival wins", "WET", 1320, 240, 29, 3, 700, 3],
+    ["dry notch 1 is gentle", "DRY", 1300, 300, 26, 2, 500, 1],
+  ];
+  for (const r of rows) {
+    const st = { rail: r[1], start: r[2], width: r[3], rival: r[4], boost: r[5] };
+    const out = race(st, r[6], r[7]);
+    console.log(`\t[${JSON.stringify(r[0])}, ${JSON.stringify(r[1])}, ${r[2].toFixed(1)}, ${r[3].toFixed(1)}, ` +
+      `${r[4].toFixed(1)}, ${r[5].toFixed(1)}, ${r[6] >= 1e9 ? "1.0e9" : r[6].toFixed(1)}, ${r[7]}, ` +
+      `${JSON.stringify(out.result)}, ${out.steps}, ${out.pos}],`);
+  }
+  STATIONS.forEach((st, i) => {
+    let lo = null, hi = null;
+    for (let b = 200; b <= 1900; b += 1) {
+      if (race(st, b).result === "WIN") { if (lo === null) lo = b; hi = b; }
+    }
+    const mid = Math.round((lo + hi) / 2);
+    const out = race(st, mid);
+    console.log(`\t[${JSON.stringify("station " + (i + 1))}, ${JSON.stringify(st.rail)}, ${st.start.toFixed(1)}, ` +
+      `${st.width.toFixed(1)}, ${st.rival.toFixed(1)}, ${st.boost.toFixed(1)}, ${mid.toFixed(1)}, 0, ` +
+      `${JSON.stringify(out.result)}, ${out.steps}, ${out.pos}],`);
+  });
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.argv.includes("--cases")) cases();
+  else check();
+}

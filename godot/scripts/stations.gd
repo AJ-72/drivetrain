@@ -17,42 +17,42 @@ const LINE_NAME := "THE COASTLINE"
 const STATIONS := [
 	{"name": "ASHFORD HALT", "rail": "DRY", "platform_start": 1300.0,
 		"platform_width": 300.0, "rival": 26.0, "boost": 2.0, "window": 20.0,
-		"par_ms": 49000, "theme": 0,
-		"tip": "HOLD THROTTLE. BRAKE WHEN STOP NEEDS MEETS PLATFORM IN."},
+		"par_ms": 49400, "theme": 0,
+		"tip": "TAP BRAKE TO ADD A NOTCH. TAP THROTTLE TO TAKE ONE OFF."},
 	{"name": "BRINDLE ROAD", "rail": "DRY", "platform_start": 1400.0,
 		"platform_width": 260.0, "rival": 28.0, "boost": 3.0, "window": 18.0,
-		"par_ms": 50900, "theme": 1,
-		"tip": "THE DASHED MARKER SHOWS WHERE A FULL BRAKE ENDS."},
+		"par_ms": 51400, "theme": 1,
+		"tip": "FAST ON NOTCH 3 LOCKS THE WHEELS. START ON 2, THEN 3."},
 	{"name": "COLE HARBOUR", "rail": "DAMP", "platform_start": 1350.0,
 		"platform_width": 250.0, "rival": 29.0, "boost": 3.0, "window": 16.0,
-		"par_ms": 52400, "theme": 2,
-		"tip": "A DAMP RAIL. THE BRAKE BITES LESS. START IT EARLIER."},
+		"par_ms": 54400, "theme": 2,
+		"tip": "A DAMP RAIL. NOTCH 3 SLIDES UNTIL YOU ARE NEARLY STOPPED."},
 	{"name": "DUNMORE", "rail": "DRY", "platform_start": 1500.0,
 		"platform_width": 220.0, "rival": 31.0, "boost": 3.0, "window": 14.0,
-		"par_ms": 52900, "theme": 3,
+		"par_ms": 53400, "theme": 3,
 		"tip": "A FAST RIVAL. IT PUSHES HARDER WHEN YOU LEAD."},
 	{"name": "ELM CROSS", "rail": "WET", "platform_start": 1320.0,
 		"platform_width": 240.0, "rival": 29.0, "boost": 3.0, "window": 14.0,
-		"par_ms": 54400, "theme": 4,
-		"tip": "WET RAIL. DO NOT SHED SPEED EARLY. CREEPING LOSES RACES."},
+		"par_ms": 55000, "theme": 4,
+		"tip": "WET RAIL. NOTCH 3 SLIDES. NOTCH 2 SLIDES WHEN FAST."},
 	{"name": "FENWICK", "rail": "DAMP", "platform_start": 1480.0,
 		"platform_width": 210.0, "rival": 32.0, "boost": 3.0, "window": 12.0,
-		"par_ms": 55000, "theme": 1,
+		"par_ms": 57100, "theme": 1,
 		"tip": "A SHORT PLATFORM. WATCH FOR THE GREEN MARKER."},
 	{"name": "GREYSTONE", "rail": "WET", "platform_start": 1450.0,
 		"platform_width": 210.0, "rival": 32.0, "boost": 3.0, "window": 12.0,
-		"par_ms": 57100, "theme": 5,
+		"par_ms": 57800, "theme": 5,
 		"tip": "NIGHT AND RAIN. TRUST THE INSTRUMENTS."},
 	{"name": "HARROW TERMINUS", "rail": "WET", "platform_start": 1520.0,
 		"platform_width": 200.0, "rival": 33.0, "boost": 3.0, "window": 10.0,
-		"par_ms": 58500, "theme": 4,
+		"par_ms": 59200, "theme": 4,
 		"tip": "THE LAST STOP. THE BEST RIVAL ON THE LINE."},
 ]
 
 # Free race: a fresh station, rail and rival for each race, as in the HTML
 # game. The rival gains FREE_TIER_STEP of top speed for each win in the
 # current streak, up to FREE_MAX_TIER. At the top tier the winning band on the
-# hardest draw is still above 120 m (measured with tools/campaign-check.mjs).
+# hardest draw is still above 60 m (measured with tools/campaign-check.mjs).
 const FREE_PLATFORM_WIDTH := 240.0
 const FREE_MIN_START := 1300
 const FREE_MAX_START := 1520

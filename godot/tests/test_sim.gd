@@ -3,29 +3,33 @@ extends SceneTree
 ##
 ##     godot --headless --path godot -s res://tests/test_sim.gd
 ##
-## Part 1 pins the GDScript physics to the reference numbers. The reference
-## comes from tools/campaign-check.mjs, which matches ../index.html step for
-## step (same result, same step count, same position to the last digit).
+## Part 1 pins the GDScript physics to the reference numbers printed by
+## tools/campaign-check.mjs (same result, same step count, same position to the
+## last digit). That script is index.html's physics plus the brake notches.
 ## Part 2 loads the main scene and drives every screen, so a script error in
 ## any draw path shows up here. The CI job also fails on any "SCRIPT ERROR" in
 ## the log. Exit code 0 only if everything passes.
 
-# label, rail, platform start, width, rival, boost, brake at, result, steps, pos
+# label, rail, platform start, width, rival, boost, brake at, notch (0 = the
+# best stop: the strongest notch that does not slide), result, steps, pos.
+# Printed by: node tools/campaign-check.mjs --cases
 const CASES := [
-	["html dry win", "DRY", 1300.0, 240.0, 30.0, 3.0, 900.0, "WIN", 2881, 1400.056949742541],
-	["html wet win", "WET", 1520.0, 240.0, 33.0, 3.0, 870.0, "WIN", 3365, 1572.8360035993235],
-	["html damp win", "DAMP", 1400.0, 240.0, 28.5, 3.0, 1000.0, "WIN", 3273, 1630.8688440410872],
-	["html undershot", "DRY", 1450.0, 240.0, 31.0, 3.0, 700.0, "UNDERSHOT", 2586, 1142.0040041343207],
-	["html rival wins", "WET", 1300.0, 240.0, 29.0, 3.0, 1200.0, "RIVAL WINS", 3635, 1990.136908918181],
-	["full power overshoots", "DRY", 1300.0, 240.0, 30.0, 3.0, 1.0e9, "OVERSHOT", 2825, 2000.0],
-	["station 1", "DRY", 1300.0, 300.0, 26.0, 2.0, 940.0, "WIN", 2936, 1450.0707371057938],
-	["station 2", "DRY", 1400.0, 260.0, 28.0, 3.0, 1000.0, "WIN", 3016, 1524.0482783346788],
-	["station 3", "DAMP", 1350.0, 250.0, 29.0, 3.0, 880.0, "WIN", 3104, 1476.884656255159],
-	["station 4", "DRY", 1500.0, 220.0, 31.0, 3.0, 1070.0, "WIN", 3107, 1609.5254945458544],
-	["station 5", "WET", 1320.0, 240.0, 29.0, 3.0, 775.0, "WIN", 3216, 1440.9135533309027],
-	["station 6", "DAMP", 1480.0, 210.0, 32.0, 3.0, 965.0, "WIN", 3224, 1586.225255685162],
-	["station 7", "WET", 1450.0, 210.0, 32.0, 3.0, 858.0, "WIN", 3346, 1555.7733900772735],
-	["station 8", "WET", 1520.0, 200.0, 33.0, 3.0, 906.0, "WIN", 3419, 1621.5244137905052],
+	["dry expert", "DRY", 1300.0, 240.0, 30.0, 3.0, 900.0, 0, "WIN", 3032, 1511.1020087149468],
+	["wet expert", "WET", 1520.0, 240.0, 33.0, 3.0, 870.0, 0, "WIN", 3596, 1736.661989206873],
+	["damp late brake", "DAMP", 1400.0, 240.0, 28.5, 3.0, 1000.0, 0, "OVERSHOT", 3530, 1752.9409206144696],
+	["undershot", "DRY", 1450.0, 240.0, 31.0, 3.0, 700.0, 0, "UNDERSHOT", 2712, 1231.3428628581091],
+	["wet late brake", "WET", 1300.0, 240.0, 29.0, 3.0, 1200.0, 0, "OVERSHOT", 3171, 2000],
+	["full power overshoots", "DRY", 1300.0, 240.0, 30.0, 3.0, 1.0e9, 0, "OVERSHOT", 2825, 2000],
+	["wet notch 3 slides, rival wins", "WET", 1320.0, 240.0, 29.0, 3.0, 700.0, 3, "RIVAL WINS", 3681, 1718.3527342208547],
+	["dry notch 1 is gentle", "DRY", 1300.0, 300.0, 26.0, 2.0, 500.0, 1, "WIN", 3653, 1338.5989377777291],
+	["station 1", "DRY", 1300.0, 300.0, 26.0, 2.0, 858.0, 0, "WIN", 2968, 1453.6776862613478],
+	["station 2", "DRY", 1400.0, 260.0, 28.0, 3.0, 916.0, 0, "WIN", 3056, 1533.0117700375283],
+	["station 3", "DAMP", 1350.0, 250.0, 29.0, 3.0, 796.0, 0, "WIN", 3225, 1477.248379261787],
+	["station 4", "DRY", 1500.0, 220.0, 31.0, 3.0, 975.0, 0, "WIN", 3141, 1610.8886877523028],
+	["station 5", "WET", 1320.0, 240.0, 29.0, 3.0, 685.0, 0, "WIN", 3258, 1443.898724014196],
+	["station 6", "DAMP", 1480.0, 210.0, 32.0, 3.0, 875.0, 0, "WIN", 3348, 1586.1934365534566],
+	["station 7", "WET", 1450.0, 210.0, 32.0, 3.0, 754.0, 0, "WIN", 3391, 1556.4566137849786],
+	["station 8", "WET", 1520.0, 200.0, 33.0, 3.0, 795.0, 0, "WIN", 3465, 1621.199405629336],
 ]
 
 var failures := 0
@@ -51,14 +55,17 @@ func check(ok: bool, label: String) -> void:
 		printerr("FAIL ", label)
 
 
-func run_case(config: Dictionary, brake_at: float) -> RaceSim:
+# Full power until brake_at, then the given notch (0: the best stop).
+func run_case(config: Dictionary, brake_at: float, notch: int = 0) -> RaceSim:
 	var sim := RaceSim.new()
 	sim.start(config)
 	var n := 0
 	while sim.state == RaceSim.State.RACING and n < 60 * 600:
 		var b := sim.player_pos >= brake_at
 		sim.throttle = not b
-		sim.brake = b
+		sim.brake_notch = 0
+		if b:
+			sim.brake_notch = notch if notch > 0 else sim.safe_notch(sim.player_speed)
 		sim.step()
 		n += 1
 	return sim
@@ -68,17 +75,17 @@ func _test_physics() -> void:
 	for c in CASES:
 		var config := {"rail": c[1], "platform_start": c[2], "platform_width": c[3],
 			"rival": c[4], "boost": c[5]}
-		var sim := run_case(config, c[6])
-		var ok: bool = sim.result == c[7] and sim.steps == c[8] and absf(sim.player_pos - c[9]) < 1e-6
+		var sim := run_case(config, c[6], c[7])
+		var ok: bool = sim.result == c[8] and sim.steps == c[9] and absf(sim.player_pos - c[10]) < 1e-6
 		check(ok, "physics %s: %s in %d steps at %.6f m (want %s, %d, %.6f)" % [
-			c[0], sim.result, sim.steps, sim.player_pos, c[7], c[8], c[9]])
+			c[0], sim.result, sim.steps, sim.player_pos, c[8], c[9], c[10]])
 
 
 func _test_stations_match() -> void:
 	check(Stations.count() == 8, "the campaign has 8 stations")
 	for i in Stations.count():
 		var s: Dictionary = Stations.config_for(i)
-		var c: Array = CASES[6 + i]
+		var c: Array = CASES[8 + i]
 		var ok: bool = s["rail"] == c[1] and s["platform_start"] == c[2] \
 			and s["platform_width"] == c[3] and s["rival"] == c[4] and s["boost"] == c[5]
 		check(ok, "stations.gd station %d matches tools/campaign-check.mjs" % (i + 1))
@@ -96,10 +103,46 @@ func _test_throttle_starts() -> void:
 	check(sim.player_speed > 0.0, "the first throttle step moves the train")
 	# A stop before ARM_AFTER_M does not end the race.
 	sim.throttle = false
-	sim.brake = true
+	sim.brake_notch = 3
 	for i in 60:
 		sim.step()
 	check(sim.state == RaceSim.State.RACING, "a stop before 50 m does not end the race")
+	_test_notches()
+
+
+func _test_notches() -> void:
+	var sim := RaceSim.new()
+	sim.start({"rail": "WET", "platform_start": 1300.0, "platform_width": 240.0, "rival": 30.0})
+	check(sim.slides(3, 5.0), "notch 3 slides on a wet rail even when slow")
+	check(sim.slides(2, 40.0) and not sim.slides(2, 30.0), "notch 2 slides on a wet rail only when fast")
+	check(not sim.slides(1, 60.0), "notch 1 never slides")
+	check(sim.safe_notch(30.0) == 2 and sim.safe_notch(45.0) == 1, "the best wet notch falls with speed")
+	sim.start({"rail": "DRY", "platform_start": 1300.0, "platform_width": 240.0, "rival": 30.0})
+	check(not sim.slides(3, 30.0) and sim.slides(3, 40.0), "notch 3 slides on a dry rail only when fast")
+	# a slide is flagged during the step and brakes less than a notch that holds
+	sim.player_speed = 45.0
+	sim.player_pos = 800.0
+	sim.player_armed = true
+	sim.brake_notch = 3
+	sim.step()
+	var slid := 45.0 - sim.player_speed
+	check(sim.sliding, "a step on a sliding notch sets sliding")
+	sim.player_speed = 45.0
+	sim.brake_notch = 2
+	sim.step()
+	check(not sim.sliding and 45.0 - sim.player_speed > slid, "a notch that holds brakes harder than a slide")
+	# the prediction agrees with the race to within a few metres
+	for rail in ["DRY", "DAMP", "WET"]:
+		sim.start({"rail": rail, "platform_start": 1300.0, "platform_width": 240.0, "rival": 1.0})
+		sim.player_pos = 500.0
+		sim.player_speed = 35.0
+		sim.player_armed = true
+		var predicted := sim.predict_stop(0)
+		while sim.state == RaceSim.State.RACING:
+			sim.brake_notch = sim.safe_notch(sim.player_speed)
+			sim.step()
+		check(absf(sim.player_pos - predicted) < 5.0,
+			"the %s stop prediction %.1f m is within 5 m of the race %.1f m" % [rail, predicted, sim.player_pos])
 
 
 func _test_font() -> void:
@@ -165,6 +208,30 @@ func _start_scene_test() -> void:
 	script_steps.append(func():
 		check(game.sim.state == RaceSim.State.RACING, "a campaign race starts after the countdown")
 		check(game.sim.player_pos > 0.0, "holding throttle moves the train in the scene"))
+	# The notch lever: taps on BRAKE add notches, taps on THROTTLE take them off.
+	script_steps.append(func():
+		var br: Vector2 = game._brake_rect().get_center()
+		var th: Vector2 = game._throttle_rect().get_center()
+		for i in 2:
+			game._unhandled_input(_touch(br, true))
+			game._unhandled_input(_touch(br, false))
+		check(game.sim.brake_notch == 2, "two taps on BRAKE set notch 2")
+		game._unhandled_input(_touch(th, true))
+		check(game.sim.brake_notch == 1, "a tap on THROTTLE takes a notch off")
+		check(game.touches.get(0, "") == "notch", "a THROTTLE tap that takes a notch off gives no power")
+		game._unhandled_input(_touch(th, false))
+		game._unhandled_input(_key(KEY_DOWN, true))
+		game._unhandled_input(_key(KEY_DOWN, false))
+		game._unhandled_input(_key(KEY_DOWN, true))
+		check(game.sim.brake_notch == 3, "the Down key adds notches up to 3")
+		game._unhandled_input(_key(KEY_DOWN, false))
+		for i in 3:
+			game._unhandled_input(_key(KEY_UP, true))
+			game._unhandled_input(_key(KEY_UP, false))
+		check(game.sim.brake_notch == 0, "the Up key takes the notches off"))
+	script_steps.append(func(): pass)
+	script_steps.append(func():
+		check(game.sim.throttle, "at notch 0 a held throttle gives power again"))
 	# The pause button: a finger on it pauses, and the touch labels draw.
 	script_steps.append(func():
 		game.touch_ui = true
@@ -192,12 +259,12 @@ func _start_scene_test() -> void:
 	# Finish the race quickly through the sim, then show the result overlay.
 	script_steps.append(func():
 		while game.sim.state == RaceSim.State.RACING:
-			var b: bool = game.sim.player_pos >= 940.0
+			var b: bool = game.sim.player_pos >= 858.0
 			game.sim.throttle = not b
-			game.sim.brake = b
+			game.sim.brake_notch = game.sim.safe_notch(game.sim.player_speed) if b else 0
 			game.sim.step()
 		game._on_finish()
-		check(game.sim.result == "WIN", "the scene race at station 1 wins with a brake at 940 m")
+		check(game.sim.result == "WIN", "the scene race at station 1 wins with a brake at 858 m")
 		check(game.save.stars[0] >= 1, "a win earns a star"))
 	for i in 3:
 		script_steps.append(func(): pass)
@@ -229,6 +296,14 @@ func _start_scene_test() -> void:
 	script_steps.append(func(): pass)
 	script_steps.append(func(): game._activate("menu"))
 	script_steps.append(func(): pass)
+
+
+func _key(code: Key, pressed: bool) -> InputEventKey:
+	var e := InputEventKey.new()
+	e.physical_keycode = code
+	e.keycode = code
+	e.pressed = pressed
+	return e
 
 
 func _touch(pos: Vector2, pressed: bool) -> InputEventScreenTouch:
