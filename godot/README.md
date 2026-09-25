@@ -47,6 +47,8 @@ have now stops you.
 | 5x7 bitmap font drawn with rectangles | `scripts/pixel_font.gd` |
 | Engine, brake, horn, rail clack, jingles, music | `scripts/synth.gd` |
 | Save file (`user://last_stop.cfg`) | `scripts/save_game.gd` |
+| Ghost train: record and replay a run | `scripts/ghost.gd` |
+| The paid features and the one "has paid" check | `scripts/paid.gd` |
 | Headless checks | `tests/test_sim.gd` |
 
 There are no image, font or audio files. Everything is drawn or synthesized
@@ -63,6 +65,25 @@ in code at 480x270 and scaled up by whole numbers.
 - **Garage**: five liveries. Points unlock four of them. All 24 campaign stars
   unlock the last one.
 
+### Paid features
+
+`scripts/paid.gd` lists each paid feature and holds the one check that
+decides whether the player has paid. Game code only asks `Paid.has("ghost")`.
+To add a paid feature, add one line to `FEATURES` and ask `Paid.has()` where
+the feature starts. A free player sees the feature's button with a padlock,
+and a tap shows "<NAME> IS IN THE FULL VERSION".
+
+There is no payment yet: `EVERYONE_PAID` is `true`, so every player has the
+paid features. Connect a store purchase, an unlock code or a paid build in
+`Paid.unlocked()`, then set `EVERYONE_PAID` to `false`.
+
+- **Ghost train** (paid): in the campaign, a see-through train replays your
+  best winning run at the station, on your track. An arrow at the screen edge
+  shows how far ahead or behind it is. The result says how your time compares.
+  The GHOST button on the route map (or `G`) turns it on and off. The game
+  saves the best run for free players too, so a player who pays later has
+  ghosts at once.
+
 ### Controls
 
 | | Keyboard | Touch / mouse | Gamepad |
@@ -73,6 +94,7 @@ in code at 480x270 and scaled up by whole numbers.
 | Brake OFF, 1, 2, 3 | `0`, `1`, `2`, `3` | tap the position | |
 | Pause | `Esc` / `P` | the II button, top right | |
 | Restart | `R` | pause menu | |
+| Ghost on / off (route map) | `G` | GHOST button | |
 | Menus | arrows, `Enter`, `Esc` | tap | D-pad, A, B |
 
 On phones the controls show touch hints in place of the key names, the start, a win and

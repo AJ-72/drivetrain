@@ -20,6 +20,10 @@ var free_best_ms := 0
 var livery := 0
 var music_on := true
 var sfx_on := true
+var ghost_on := true
+# The ghost of each station: see ghost.gd. ghost_ms is that run's time.
+var ghosts: Array[PackedFloat32Array] = []
+var ghost_ms: Array[int] = []
 
 
 func _init() -> void:
@@ -27,6 +31,9 @@ func _init() -> void:
 	stars.fill(0)
 	best_ms.resize(Stations.count())
 	best_ms.fill(0)
+	ghosts.resize(Stations.count())
+	ghost_ms.resize(Stations.count())
+	ghost_ms.fill(0)
 
 
 func load_file() -> void:
@@ -36,6 +43,11 @@ func load_file() -> void:
 	for i in Stations.count():
 		stars[i] = clampi(_int(cfg, "campaign", "stars_%d" % i, 0), 0, 3)
 		best_ms[i] = _best(_int(cfg, "campaign", "best_%d" % i, 0))
+		var run = cfg.get_value("ghost", "run_%d" % i, PackedFloat32Array())
+		var ms := _best(_int(cfg, "ghost", "ms_%d" % i, 0))
+		if typeof(run) == TYPE_PACKED_FLOAT32_ARRAY and Ghost.valid(run) and ms > 0:
+			ghosts[i] = run
+			ghost_ms[i] = ms
 	points = maxi(0, _int(cfg, "career", "points", 0))
 	streak = maxi(0, _int(cfg, "career", "streak", 0))
 	best_streak = maxi(0, _int(cfg, "career", "best_streak", 0))
@@ -45,6 +57,7 @@ func load_file() -> void:
 	livery = clampi(_int(cfg, "garage", "livery", 0), 0, Stations.LIVERIES.size() - 1)
 	music_on = _bool(cfg, "settings", "music", true)
 	sfx_on = _bool(cfg, "settings", "sfx", true)
+	ghost_on = _bool(cfg, "settings", "ghost", true)
 	if not livery_unlocked(livery):
 		livery = 0
 
@@ -54,6 +67,9 @@ func save() -> bool:
 	for i in Stations.count():
 		cfg.set_value("campaign", "stars_%d" % i, stars[i])
 		cfg.set_value("campaign", "best_%d" % i, best_ms[i])
+		if not ghosts[i].is_empty():
+			cfg.set_value("ghost", "run_%d" % i, ghosts[i])
+			cfg.set_value("ghost", "ms_%d" % i, ghost_ms[i])
 	cfg.set_value("career", "points", points)
 	cfg.set_value("career", "streak", streak)
 	cfg.set_value("career", "best_streak", best_streak)
@@ -63,6 +79,7 @@ func save() -> bool:
 	cfg.set_value("garage", "livery", livery)
 	cfg.set_value("settings", "music", music_on)
 	cfg.set_value("settings", "sfx", sfx_on)
+	cfg.set_value("settings", "ghost", ghost_on)
 	return cfg.save(PATH) == OK
 
 

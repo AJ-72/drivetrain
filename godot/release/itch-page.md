@@ -20,6 +20,7 @@ Hold SPEED UP. Watch the rival pull ahead. Judge the exact moment to brake: too 
 - **Three stars per station:** win, beat par, and stop on the board
 - **Free race mode** with random stations, a growing streak and a rival that gets faster
 - **Five liveries** to unlock in the garage
+- **Ghost train:** race a see-through replay of your best run at each station
 - **Rain changes everything:** a wet rail carries you about 35% further
 - Pixel art, synthesized sound, and a chiptune soundtrack, all made in code
 - Keyboard, gamepad, mouse and touch

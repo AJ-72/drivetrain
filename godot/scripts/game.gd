@@ -10,6 +10,9 @@ extends Node2D
 ## into touches). Each race button tracks which touch indices hold it, so one
 ## finger's release never drops another finger's hold.
 ##
+## The ghost train (a paid feature, see paid.gd) replays the best run of a
+## campaign station on the player's track.
+##
 ## Phones: a pause button, a prompt to turn a phone held upright, a full-screen
 ## item on the web title screen, touch-only labels and short vibrations.
 
@@ -37,6 +40,7 @@ const SHADOW := Color(0, 0, 0, 0.6)
 const RIVAL_BODY := Color("a7453a")
 const RIVAL_TRIM := Color("efe2bd")
 const RIVAL_DARK := Color("6a2620")
+const GHOST := Color("9fd8ff")
 
 # sky top, sky bottom, far hills, near hills, ground, ballast, sun, night
 const THEMES := [
@@ -77,6 +81,11 @@ var _pred_best := 0.0      # where the best stop ends, worked out once per frame
 var _pred_now := 0.0       # where the stop on the current notch ends
 var _exit_tried_t := -100.0 # when EXIT last asked the browser to close the page
 var installed_app := false # started from the home screen: already full screen
+var ghost_run := PackedFloat32Array()  # the run the ghost replays in this race
+var ghost_run_ms := 0
+var ghost_rec := PackedFloat32Array()  # this race, recorded for the next ghost
+var _locked_t := -100.0    # when a locked paid feature was last tapped
+var _locked_feature := ""
 
 
 func _ready() -> void:
@@ -101,6 +110,7 @@ func _setup_input() -> void:
 		_bind("brake_%d" % n, [KEY_0 + n], -1)
 	_bind("restart", [KEY_R], -1)
 	_bind("pause", [KEY_ESCAPE, KEY_P], -1)
+	_bind("ghost", [KEY_G], -1)
 
 
 func _bind(action: String, keys: Array, axis: int, button: int = -1) -> void:
@@ -187,6 +197,8 @@ func _held(action: String) -> bool:
 
 
 func _after_step() -> void:
+	if sim.steps % Ghost.EVERY == 0 and ghost_rec.size() < Ghost.MAX_SAMPLES - 1:
+		ghost_rec.append(sim.player_pos)
 	var joint := floori(sim.player_pos / JOINT_M)
 	if joint != last_joint:
 		last_joint = joint
@@ -234,6 +246,9 @@ func _start_race(new_mode: String, index: int) -> void:
 	last_joint = 0
 	particles.clear()
 	outcome = {}
+	ghost_rec = PackedFloat32Array([0.0])
+	ghost_run = save.ghosts[index] if mode == "campaign" else PackedFloat32Array()
+	ghost_run_ms = save.ghost_ms[index] if mode == "campaign" else 0
 	screen = Screen.RACE
 	sel = 0
 	synth.play("beep")
@@ -263,6 +278,13 @@ func _on_finish() -> void:
 				save.best_ms[station] = sim.elapsed_ms
 				o["new_best"] = true
 			o["line_done"] = save.campaign_done() and not was_done
+			if _ghost_live():
+				o["ghost_ms"] = ghost_run_ms
+			# The ghost is the best run. A station without one takes any win.
+			if o["new_best"] or save.ghosts[station].is_empty():
+				ghost_rec.append(sim.player_pos)
+				save.ghosts[station] = ghost_rec
+				save.ghost_ms[station] = sim.elapsed_ms
 	else:
 		save.free_races += 1
 		if win:
@@ -331,6 +353,13 @@ func _items() -> Array:
 			items.append({"id": "next", "label": ">", "rect": Rect2(VW - 36, 134, 32, 44),
 				"enabled": map_sel < Stations.count() - 1, "button": true})
 			items.append({"id": "back", "label": "BACK", "rect": Rect2(12, 238, 120, 24), "enabled": true, "button": true})
+			var ghost_label := "GHOST: " + ("ON" if save.ghost_on else "OFF")
+			if not Paid.has("ghost"):
+				ghost_label = "GHOST: LOCKED"
+			if not touch_ui:
+				ghost_label += " (G)"
+			items.append({"id": "ghost", "label": ghost_label, "rect": Rect2(VW / 2.0 - 76, 238, 152, 24),
+				"enabled": true, "button": true, "locked": not Paid.has("ghost")})
 			items.append({"id": "race", "label": "RACE", "rect": Rect2(VW - 132, 238, 120, 24),
 				"enabled": save.station_unlocked(map_sel), "button": true})
 		Screen.GARAGE:
@@ -393,6 +422,13 @@ func _activate(id: String) -> void:
 			save.save()
 		"fullscreen":
 			_toggle_fullscreen()
+		"ghost":
+			if Paid.has("ghost"):
+				save.ghost_on = not save.ghost_on
+				save.save()
+			else:
+				_locked_t = t
+				_locked_feature = "ghost"
 		"quit":
 			_exit_game()
 		"back":
@@ -531,6 +567,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_activate("race")
 		elif event.is_action_pressed("ui_cancel"):
 			_activate("back")
+		elif event.is_action_pressed("ghost"):
+			_activate("ghost")
 		return
 	if screen == Screen.RACE and sim.state == RaceSim.State.RESULT and event.is_action_pressed("restart"):
 		_activate("retry" if mode == "campaign" else "again")
@@ -723,10 +761,12 @@ func _draw_items(items: Array) -> void:
 			continue
 		var r: Rect2 = it["rect"]
 		var on: bool = it["id"] == sel_id
-		var c := INK if it["enabled"] else MUTED
+		var c := INK if it["enabled"] and not it.get("locked", false) else MUTED
 		if it.get("button", false):
 			_box(r, Color(GO, 0.35) if on else PANEL, GO if on else EDGE)
 			_txtc(it["label"], r.get_center().x, r.position.y + (r.size.y - 7) / 2.0, c)
+			if it.get("locked", false):
+				_draw_padlock(r.position.x + 6, r.position.y + (r.size.y - 9) / 2.0, WARN)
 		else:
 			if on:
 				draw_rect(r, Color(GO, 0.3))
@@ -793,6 +833,7 @@ func _draw_map() -> void:
 	if not open_sel:
 		_txt("LOCKED - WIN THE STATION BEFORE IT", 52, 122, STOP)
 		_draw_items(_items())
+		_draw_locked_note()
 		return
 	var rail_c := INK if st["rail"] == "DRY" else WARN
 	_txt("RAIL", 52, 122, MUTED)
@@ -811,6 +852,7 @@ func _draw_map() -> void:
 	_txt("  OF THE STOP BOARD", 250, 158, WARN if save.stars[map_sel] >= 3 else MUTED)
 	_draw_wrapped(st["tip"], 52, 190, 376, INK)
 	_draw_items(_items())
+	_draw_locked_note()
 
 
 func _draw_wrapped(text: String, x: float, y: float, max_w: float, c: Color) -> void:
@@ -866,6 +908,22 @@ func _draw_garage() -> void:
 	_txt("BEST TIME", 240, 208, MUTED)
 	_txt(_secs(save.free_best_ms) if save.free_best_ms > 0 else "--", 360, 208, INK)
 	_draw_items([items[items.size() - 1]])
+
+
+func _draw_padlock(x: float, y: float, c: Color) -> void:
+	_box(Rect2(x + 1, y, 5, 4), Color(0, 0, 0, 0), c)
+	draw_rect(Rect2(x, y + 3, 7, 6), c)
+	draw_rect(Rect2(x + 3, y + 5, 1, 2), Color("111111"))
+
+
+## A short note that a locked paid feature is in the full version.
+func _draw_locked_note() -> void:
+	if t - _locked_t > 3.0 or _locked_feature == "":
+		return
+	var note := Paid.name_of(_locked_feature) + " IS IN THE FULL VERSION"
+	var w := PixelFont.width(note)
+	draw_rect(Rect2(VW / 2.0 - w / 2.0 - 6, 24, w + 12, 13), Color(WARN, 0.95))
+	_txtc(note, VW / 2.0, 27, Color("111111"))
 
 
 func _is_sel(id: String) -> bool:
@@ -944,6 +1002,7 @@ func _draw_race() -> void:
 	_draw_warning_board()
 	_draw_home_signal()
 	_draw_stop_marker()
+	_draw_ghost()
 	var lv: Dictionary = Stations.LIVERIES[save.livery]
 	_draw_train(_x(sim.player_pos), PLAYER_RAIL_Y, lv["body"], lv["trim"], lv["dark"], night, sim.player_pos)
 	_draw_particles()
@@ -951,6 +1010,8 @@ func _draw_race() -> void:
 	if night:
 		draw_rect(Rect2(0, 0, VW, VH), Color(0.02, 0.03, 0.1, 0.25))
 	_draw_rival_edge()
+	if _ghost_live():
+		_draw_edge_marker(_ghost_pos(), PLAYER_RAIL_Y - 44, "GHOST ", GHOST, GHOST)
 	_txts("RIVAL", 4, RIVAL_RAIL_Y - 30, MUTED)
 	_txts("YOU", 4, PLAYER_RAIL_Y - 30, GO)
 	_draw_hud()
@@ -1176,14 +1237,18 @@ func _draw_stop_marker() -> void:
 func _draw_rival_edge() -> void:
 	if sim.state == RaceSim.State.IDLE and countdown <= 0.0:
 		return
-	var x := _x(sim.rival_pos)
+	_draw_edge_marker(sim.rival_pos, RIVAL_RAIL_Y - 12, "", STOP, GO)
+
+
+## An arrow at the screen edge and the gap, for a train out of view.
+func _draw_edge_marker(pos_m: float, y: int, prefix: String, ahead_c: Color, behind_c: Color) -> void:
+	var x := _x(pos_m)
 	if x >= -10 and x <= VW + 60:
 		return
 	var ahead := x > VW
-	var gap := absi(roundi(sim.rival_pos - sim.player_pos))
-	var c := STOP if ahead else GO
-	var y := RIVAL_RAIL_Y - 12
-	var label := "%d M" % gap
+	var gap := absi(roundi(pos_m - sim.player_pos))
+	var c := ahead_c if ahead else behind_c
+	var label := prefix + "%d M" % gap
 	var lw := PixelFont.width(label)
 	for i in 6:
 		var ax := VW - 4 - i * 2 if ahead else 3 + i * 2
@@ -1212,6 +1277,34 @@ func _draw_weather() -> void:
 		var y := fposmod(i * 29.3 + t * speed, VH)
 		draw_rect(Rect2(roundi(x), roundi(y), 1, 3), drop)
 		draw_rect(Rect2(roundi(x) - 1, roundi(y) + 3, 1, 1), drop)
+
+
+func _ghost_live() -> bool:
+	return mode == "campaign" and save.ghost_on and Paid.has("ghost") and ghost_run.size() > 1
+
+
+func _ghost_pos() -> float:
+	return Ghost.pos_at(ghost_run, sim.steps)
+
+
+# The ghost: the outline of the player's train, see-through, on the same rail.
+func _draw_ghost() -> void:
+	if not _ghost_live() or sim.state == RaceSim.State.IDLE:
+		return
+	var gm := _ghost_pos()
+	var nose := _x(gm)
+	if nose < -70 or nose - 60 > VW + 10:
+		return
+	var y := PLAYER_RAIL_Y
+	var fill := Color(GHOST, 0.2)
+	var line := Color(GHOST, 0.8)
+	for c in 2:
+		var right := nose - 24 - c * 19
+		_box(Rect2(right - 17, y - 14, 17, 11), fill, line)
+	_box(Rect2(nose - 22, y - 12, 22, 9), fill, line)
+	_box(Rect2(nose - 22, y - 18, 9, 6), fill, line)
+	if absf(gm - sim.player_pos) > 36.0:
+		_txts("GHOST", nose - 44, y - 26, GHOST)
 
 
 # A train is a locomotive and two coaches, drawn from the nose backwards.
@@ -1428,6 +1521,14 @@ func _draw_result() -> void:
 		note = "NEW BEST" if saved_ok else "NEW BEST (NOT SAVED)"
 	elif not saved_ok:
 		note = "PROGRESS NOT SAVED"
+	if outcome.has("ghost_ms") and note in ["", "NEW BEST"]:
+		var d := sim.elapsed_ms - int(outcome["ghost_ms"])
+		var g := "SAME TIME AS YOUR GHOST"
+		if d < 0:
+			g = "YOU BEAT YOUR GHOST BY %s S" % _secs(-d)
+		elif d > 0:
+			g = "YOUR GHOST WAS %s S FASTER" % _secs(d)
+		note = g if note == "" else note + " - " + g
 	if note != "":
 		_txtc(note, VW / 2.0, 164, LAMP if saved_ok else STOP)
 	var hint := "TAP A BUTTON" if touch_ui else "SPACE / ENTER TO CHOOSE - R TO RETRY"
