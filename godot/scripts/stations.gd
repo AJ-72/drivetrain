@@ -18,7 +18,7 @@ const STATIONS := [
 	{"name": "ASHFORD HALT", "rail": "DRY", "platform_start": 1300.0,
 		"platform_width": 300.0, "rival": 26.0, "boost": 2.0, "window": 20.0,
 		"par_ms": 49400, "theme": 0,
-		"tip": "TAP BRAKE TO ADD A NOTCH. TAP THROTTLE TO TAKE ONE OFF."},
+		"tip": "A HIGHER NUMBER ON THE BRAKE LEVER BRAKES HARDER."},
 	{"name": "BRINDLE ROAD", "rail": "DRY", "platform_start": 1400.0,
 		"platform_width": 260.0, "rival": 28.0, "boost": 3.0, "window": 18.0,
 		"par_ms": 51400, "theme": 1,

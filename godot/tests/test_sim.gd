@@ -44,6 +44,8 @@ func _initialize() -> void:
 	_test_throttle_starts()
 	_test_font()
 	_test_save_roundtrip()
+	_test_ghost()
+	_test_paid()
 	_start_scene_test()
 
 
@@ -168,22 +170,56 @@ func _test_save_roundtrip() -> void:
 	s.points = 120
 	s.livery = 1
 	s.music_on = false
+	s.ghost_on = false
+	s.ghosts[0] = PackedFloat32Array([0.0, 1.5, 4.0, 900.0])
+	s.ghost_ms[0] = 48000
 	check(s.save(), "the save file writes")
 	var r := SaveGame.new()
 	r.load_file()
 	check(r.stars[0] == 3 and r.stars[1] == 1 and r.best_ms[0] == 48000, "campaign progress reloads")
 	check(r.points == 120 and r.livery == 1 and not r.music_on, "career and settings reload")
 	check(r.station_unlocked(2) and not r.station_unlocked(3), "stations unlock in order")
+	check(not r.ghost_on and r.ghost_ms[0] == 48000 and r.ghosts[0].size() == 4
+		and is_equal_approx(r.ghosts[0][3], 900.0), "the ghost run and its setting reload")
+	check(r.ghosts[1].is_empty() and r.ghost_ms[1] == 0, "a station with no ghost loads with none")
 	# a corrupt best time loads as no record
 	var cfg := ConfigFile.new()
 	cfg.load(SaveGame.PATH)
 	cfg.set_value("campaign", "best_0", 12)
 	cfg.set_value("campaign", "stars_0", "three")
+	cfg.set_value("ghost", "run_0", PackedFloat32Array([0.0, 50.0, 20.0]))
 	cfg.save(SaveGame.PATH)
 	var bad := SaveGame.new()
 	bad.load_file()
 	check(bad.best_ms[0] == 0 and bad.stars[0] == 0, "a corrupt save value loads as empty")
+	check(bad.ghosts[0].is_empty() and bad.ghost_ms[0] == 0, "a ghost that runs backwards loads as none")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(SaveGame.PATH))
+
+
+func _test_ghost() -> void:
+	var run := PackedFloat32Array([0.0, 2.0, 6.0, 10.0])
+	check(is_equal_approx(Ghost.pos_at(run, 0), 0.0), "the ghost starts at 0 m")
+	check(is_equal_approx(Ghost.pos_at(run, Ghost.EVERY), 2.0), "the ghost is on its sample at a sample step")
+	check(is_equal_approx(Ghost.pos_at(run, Ghost.EVERY + Ghost.EVERY / 2), 4.0),
+		"the ghost is between two samples between their steps")
+	check(is_equal_approx(Ghost.pos_at(run, 100000), 10.0), "the ghost stays where its run stopped")
+	check(Ghost.pos_at(PackedFloat32Array(), 50) == 0.0, "no run puts the ghost at 0 m")
+	check(Ghost.valid(run), "a forward run on the track is valid")
+	check(not Ghost.valid(PackedFloat32Array([0.0])), "a run with one sample is not valid")
+	check(not Ghost.valid(PackedFloat32Array([0.0, 5.0, 4.0])), "a run that goes backwards is not valid")
+	check(not Ghost.valid(PackedFloat32Array([0.0, RaceSim.TRACK_LENGTH_M + 1.0])),
+		"a run past the end of the track is not valid")
+
+
+func _test_paid() -> void:
+	Paid.override = 0
+	check(not Paid.has("ghost"), "a free player does not have the ghost")
+	Paid.override = 1
+	check(Paid.has("ghost"), "a paid player has the ghost")
+	check(not Paid.has("no such feature"), "a feature not in the paid list is never on")
+	check(Paid.name_of("ghost") != "", "each paid feature has a name for its teaser")
+	Paid.override = -1
+	check(Paid.unlocked() == Paid.EVERYONE_PAID, "without an override, EVERYONE_PAID decides")
 
 
 # --------------------------------------------------------- the scene test
@@ -300,11 +336,67 @@ func _start_scene_test() -> void:
 			game.sim.throttle = not b
 			game.sim.brake_notch = game.sim.safe_notch(game.sim.player_speed) if b else 0
 			game.sim.step()
+			game._after_step()
 		game._on_finish()
 		check(game.sim.result == "WIN", "the scene race at station 1 wins with a brake at 858 m")
-		check(game.save.stars[0] >= 1, "a win earns a star"))
+		check(game.save.stars[0] >= 1, "a win earns a star")
+		check(Ghost.valid(game.save.ghosts[0]) and game.save.ghost_ms[0] == game.sim.elapsed_ms,
+			"the first win at a station records its ghost")
+		check(is_equal_approx(Ghost.pos_at(game.save.ghosts[0], game.sim.steps), game.sim.player_pos),
+			"the ghost comes to rest where the train stopped"))
 	for i in 3:
 		script_steps.append(func(): pass)
+	# Race station 1 again with its ghost, then beat it.
+	script_steps.append(func():
+		Paid.override = 1
+		game.save.ghost_on = true
+		game._start_race("campaign", 0)
+		check(game._ghost_live(), "a paid player races the ghost of the station")
+		game.countdown = 0.0
+		game.sim.state = RaceSim.State.RACING
+		for i in 600:
+			game.sim.throttle = true
+			game.sim.step()
+			game._after_step()
+		check(is_equal_approx(game._ghost_pos(), Ghost.pos_at(game.save.ghosts[0], 600)),
+			"the ghost is where the best run was at the same step"))
+	script_steps.append(func(): pass)
+	script_steps.append(func():
+		game.sim.player_pos = game.sim.platform_centre()
+		game.sim.steps = 60
+		game.sim.elapsed_ms = 1000
+		game.sim._finish("WIN")
+		game._on_finish()
+		check(game.outcome.has("ghost_ms") and game.outcome["new_best"], "a faster win beats the ghost")
+		check(game.save.ghost_ms[0] == 1000, "a new best becomes the new ghost"))
+	script_steps.append(func(): pass)
+	script_steps.append(func():
+		Paid.override = 0
+		game._start_race("campaign", 0)
+		check(not game._ghost_live(), "a free player races without the ghost"))
+	script_steps.append(func(): pass)
+	script_steps.append(func(): game._activate("menu"))
+	# The route map: GHOST is a locked teaser for a free player.
+	script_steps.append(func():
+		game._unhandled_input(_key(KEY_G, true))
+		game._unhandled_input(_key(KEY_G, false))
+		check(game.save.ghost_on and game._locked_feature == "ghost",
+			"a free player's G key shows the full version note, not a toggle"))
+	script_steps.append(func(): pass)
+	script_steps.append(func():
+		Paid.override = 1
+		game._unhandled_input(_key(KEY_G, true))
+		game._unhandled_input(_key(KEY_G, false))
+		check(not game.save.ghost_on, "a paid player's G key turns the ghost off")
+		var gid := ""
+		for it in game._items():
+			if it["id"] == "ghost":
+				gid = it["label"]
+		check(gid.begins_with("GHOST: OFF"), "the ghost button says OFF")
+		game._activate("ghost")
+		Paid.override = -1)
+	script_steps.append(func(): pass)
+	script_steps.append(func(): game._activate("race"))
 	script_steps.append(func(): game._activate("next"))
 	script_steps.append(func(): pass)
 	script_steps.append(func(): game._activate("menu"))
