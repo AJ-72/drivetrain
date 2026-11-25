@@ -3,6 +3,7 @@ name: Publish to GitHub Pages
 # Builds the Last Stop web export and publishes it with the original HTML game.
 #   /          Last Stop (Godot web build, no threads, so no special headers)
 #   /classic/  the original index.html
+#   /probe/    a device check page: share sheet, copy, storage and link fragments
 # Every build plays the export in headless Chromium and fails if it is silent
 # if a finger tap does not reach the menus, or if it does not install as an app.
 # Pull requests and claude/* branches build the site. Only main deploys.
@@ -13,12 +14,14 @@ on:
     paths:
       - "godot/**"
       - "index.html"
+      - "probe/**"
       - "tools/web-*.mjs"
       - ".github/workflows/pages.yml"
   pull_request:
     paths:
       - "godot/**"
       - "index.html"
+      - "probe/**"
       - "tools/web-*.mjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -107,7 +110,9 @@ jobs:
           mkdir -p site/classic
           cp -R godot/export/web/. site/
           cp index.html site/classic/index.html
-          ls -la site site/classic
+          mkdir -p site/probe
+          cp probe/index.html site/probe/index.html
+          ls -la site site/classic site/probe
 
       - uses: actions/upload-pages-artifact@v3
         with:
