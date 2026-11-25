@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Drivetrain Probe</title>
+<meta name="robots" content="noindex">
+<style>
+/* One column: device block, then check rows, then buttons. Same look as the artifact probe. */
+:root {
+  --bg: #f3f5f2; --fg: #1d2420; --muted: #5c6a62; --line: #cfd8d2; --panel: #e6ebe7;
+  --ok: #1f7a46; --bad: #b3261e;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141916; --fg: #e3e9e5; --muted: #95a39b; --line: #2c3631; --panel: #1c231f;
+  --ok: #5fcf8d; --bad: #ff8a80; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #141916; --fg: #e3e9e5; --muted: #95a39b; --line: #2c3631; --panel: #1c231f;
+  --ok: #5fcf8d; --bad: #ff8a80; color-scheme: dark }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 var(--sans);
+  padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); }
+main { max-width: 640px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font-size: 1.25rem; margin: 0; }
+h2 { font-size: 0.8rem; margin: 0; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+p { margin: 0; color: var(--muted); }
+section { display: grid; gap: 10px; }
+.device { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; }
+dt { color: var(--muted); }
+dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; min-width: 0; }
+.ok { color: var(--ok); } .bad { color: var(--bad); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+button, a.btn { font: inherit; padding: 10px 16px; border: 1px solid var(--line); background: transparent;
+  color: var(--fg); border-radius: 6px; cursor: pointer; text-decoration: none; }
+button:focus-visible, a.btn:focus-visible, textarea:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
+textarea { font: 0.9rem var(--mono); width: 100%; box-sizing: border-box; background: var(--panel);
+  color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Drivetrain probe</h1>
+  <p>Open this on your phone, tap all three buttons, then one link. Take a screenshot of the whole page.</p>
+
+  <section class="device">
+    <h2>This device</h2>
+    <dl id="dev"></dl>
+  </section>
+
+  <section>
+    <h2>Checks</h2>
+    <dl id="out"></dl>
+  </section>
+
+  <div class="row">
+    <button id="share-text" type="button">Share text</button>
+    <button id="share-url" type="button">Share link</button>
+    <button id="copy" type="button">Copy</button>
+  </div>
+
+  <section>
+    <h2>Link tests</h2>
+    <p>Each opens this page with a different ending. The hash row should then show it.</p>
+    <div class="row" id="links"></div>
+  </section>
+
+  <section>
+    <h2>Fallback: select and copy by hand</h2>
+    <textarea id="line" rows="2" readonly>Drivetrain 25 Nov · WIN 41.2 s · 0.8 m from the mark · DAMP</textarea>
+  </section>
+</main>
+<script>
+function row(list, key, val, good) {
+  const host = document.getElementById(list);
+  let dd = document.getElementById(list + "-" + key);
+  if (!dd) {
+    const dt = document.createElement("dt"); dt.textContent = key;
+    dd = document.createElement("dd"); dd.id = list + "-" + key;
+    host.append(dt, dd);
+  }
+  dd.textContent = String(val);
+  dd.className = good === undefined ? "" : (good ? "ok" : "bad");
+}
+function errText(e) { return (e && e.name) + ": " + (e && e.message); }
+
+// Device block: proves which device and browser produced the screenshot.
+const ua = navigator.userAgent;
+const kind = /iPhone|iPad/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "other";
+row("dev", "system", kind);
+row("dev", "screen", screen.width + " × " + screen.height + " at " + devicePixelRatio + "x");
+row("dev", "touch points", navigator.maxTouchPoints);
+row("dev", "loaded at", new Date().toLocaleString());
+row("dev", "page", location.origin + location.pathname);
+row("dev", "browser", ua);
+
+// Where the page runs: the artifact probe ran inside an embedded frame; this one should not.
+let topLevel;
+try { topLevel = window.top === window; } catch (e) { topLevel = false; }
+row("out", "top-level page", topLevel ? "yes" : "no (inside a frame)", topLevel);
+row("out", "secure context", window.isSecureContext, window.isSecureContext);
+row("out", "installed app", matchMedia("(display-mode: standalone)").matches ? "yes" : "no (browser tab)");
+
+const policy = document.permissionsPolicy || document.featurePolicy;
+for (const f of ["web-share", "clipboard-write"]) {
+  if (policy && policy.allowsFeature) row("out", f + " allowed", policy.allowsFeature(f), policy.allowsFeature(f));
+  else row("out", f + " allowed", "can't tell (no policy API)");
+}
+
+row("out", "navigator.share", typeof navigator.share, typeof navigator.share === "function");
+const canShare = typeof navigator.canShare === "function";
+row("out", "canShare(text)", canShare ? navigator.canShare({ text: "x" }) : "no canShare", canShare && navigator.canShare({ text: "x" }));
+row("out", "clipboard.writeText", typeof (navigator.clipboard && navigator.clipboard.writeText),
+    !!(navigator.clipboard && navigator.clipboard.writeText));
+try {
+  localStorage.setItem("probe", "1");
+  row("out", "localStorage", localStorage.getItem("probe") === "1" ? "works" : "read failed", localStorage.getItem("probe") === "1");
+} catch (e) { row("out", "localStorage", "threw: " + e.name, false); }
+
+function readHash() {
+  const h = location.hash;
+  row("out", "hash", h ? h.length - 1 + " chars: " + (h.length > 41 ? h.slice(0, 40) + "…" : h) : '"" (none)', h.length > 1);
+}
+readHash();
+window.addEventListener("hashchange", readHash);
+
+row("out", "share text result", "not tried");
+row("out", "share link result", "not tried");
+row("out", "copy result", "not tried");
+
+const text = document.getElementById("line").value;
+const link = location.origin + location.pathname.replace(/probe\/?$/, "") + "#c-k3x9-t41200";
+
+async function tryShare(key, data) {
+  if (typeof navigator.share !== "function") { row("out", key, "no share sheet", false); return; }
+  try { await navigator.share(data); row("out", key, "shared", true); }
+  catch (e) { row("out", key, e.name === "AbortError" ? "sheet opened, then closed" : errText(e), e.name === "AbortError"); }
+}
+document.getElementById("share-text").addEventListener("click", () => tryShare("share text result", { text }));
+document.getElementById("share-url").addEventListener("click", () => tryShare("share link result", { title: "Drivetrain", text: "Beat my 41.2 s", url: link }));
+document.getElementById("copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(text); row("out", "copy result", "copied", true); }
+  catch (e) {
+    row("out", "copy result", errText(e), false);
+    const box = document.getElementById("line"); box.focus(); box.select();
+  }
+});
+
+// Link tests: the fragment shapes the backlog's challenge and daily links would use.
+const tests = [
+  ["plain", "#c-k3x9-t41200"],
+  ["= and &", "#seed=20261125&t=41200"],
+  ["200 chars", "#g-" + "a1b".repeat(66) + "z"],
+];
+const links = document.getElementById("links");
+for (const [label, frag] of tests) {
+  const a = document.createElement("a");
+  a.className = "btn"; a.href = frag; a.textContent = label;
+  links.append(a);
+}
+</script>
+</body>
+</html>
