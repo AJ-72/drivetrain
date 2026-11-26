@@ -132,6 +132,19 @@ html, body {
   padding: 3px 10px; border-radius: 3px;
 }
 #reason:empty { display: none; }
+#mark {
+  font-family: var(--font-sign);
+  font-size: 12px; font-weight: 800; letter-spacing: 0.04em;
+  color: var(--panel); background: var(--warn);
+  padding: 3px 10px; border-radius: 3px;
+}
+#mark:empty { display: none; }
+#raceid {
+  font-family: ui-monospace, monospace;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  color: var(--muted);
+}
+#raceid:empty { display: none; }
 #callout b.urgent { background: var(--stop); }
 #newbest {
   font-family: var(--font-sign);
@@ -190,6 +203,8 @@ html, body {
     <div id="overlay">
       <div id="result"></div>
       <div id="reason"></div>
+      <div id="mark"></div>
+      <div id="raceid"></div>
       <div id="newbest"></div>
     </div>
   </div>
@@ -210,6 +225,14 @@ const K = {
   PLATFORM_WIDTH_M:      240,
   PLATFORM_MIN_START_M: 1300,
   PLATFORM_MAX_START_M: 1520,
+
+  // A car-stop board stands this far before the platform end. A WIN is still
+  // any stop inside the platform; the board only measures how close it was.
+  MARK_FROM_END_M:        20,
+
+  // One seed sets the station, the rail and the rival. The same seed gives
+  // the same race on every phone, so a race can be sent to someone else.
+  SEED_MAX:            99999,
 
   // A real machine does not pull the same at 20 km/h and at 200. Tractive
   // effort holds flat while adhesion limits it, then falls as power over speed.
@@ -261,6 +284,7 @@ const S = {
   platformStart: 0, platformEnd: 0, warnAtM: 0, passedWarn: false,
   gripName: "DRY", grip: 1,
   forcedRivalMax: null, forcedPlatformStart: null, forcedGrip: null,
+  seed: 0, forcedSeed: null, linkSeed: null, markM: 0,
   steps: 0, elapsedMs: 0,
   bestMs: null, newBest: false, bestSaved: true,
   input: { throttle: false, brake: false }
@@ -365,17 +389,57 @@ function step() {
   if (S.rivalDone) finish("RIVAL WINS");
 }
 
+// mulberry32: a small, well-known 32-bit generator. Plain integer maths, so
+// every browser returns the same sequence for the same seed.
+function seededRandom(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function validSeed(n) {
+  return Number.isInteger(n) && n >= 1 && n <= K.SEED_MAX;
+}
+
+// A link such as index.html#seed=48213 opens that exact race.
+function readLinkSeed() {
+  try {
+    const m = /(?:^#|&)seed=(\d{1,5})(?:&|$)/.exec(window.location.hash || "");
+    const n = m ? Number(m[1]) : NaN;
+    return validSeed(n) ? n : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function pickSeed() {
+  if (S.forcedSeed !== null) return S.forcedSeed;
+  if (S.linkSeed !== null) return S.linkSeed;
+  return 1 + Math.floor(Math.random() * K.SEED_MAX);
+}
+
 function startRace() {
   S.state = "RACING";
   S.result = null;
   S.playerPos = 0; S.playerSpeed = 0; S.playerArmed = false;
   S.rivalPos = 0;  S.rivalSpeed = 0;  S.rivalArmed = false; S.rivalDone = false;
-  // A fresh station, a fresh rail, and a fresh rival for every race.
+  // A fresh station, a fresh rail, and a fresh rival for every race, all
+  // drawn from one seed. The three draws are always taken in this order,
+  // even when a test pins one of them, so a seed means the same race.
+  S.seed = pickSeed();
+  const rnd = seededRandom(S.seed);
+  const drawStation = rnd(), drawGrip = rnd(), drawRival = rnd();
   S.platformStart = S.forcedPlatformStart !== null
     ? S.forcedPlatformStart
     : Math.round(K.PLATFORM_MIN_START_M
-        + Math.random() * (K.PLATFORM_MAX_START_M - K.PLATFORM_MIN_START_M));
+        + drawStation * (K.PLATFORM_MAX_START_M - K.PLATFORM_MIN_START_M));
   S.platformEnd = S.platformStart + K.PLATFORM_WIDTH_M;
+  S.markM = S.platformEnd - K.MARK_FROM_END_M;
   S.rivalTargetM = S.platformStart + K.PLATFORM_WIDTH_M / 2;
   S.warnAtM = S.platformStart - K.WARN_BEFORE_M;
   S.passedWarn = false;
@@ -384,13 +448,13 @@ function startRace() {
 
   const grip = S.forcedGrip !== null
     ? (K.GRIPS.find((x) => x.name === S.forcedGrip) || K.GRIPS[0])
-    : K.GRIPS[Math.floor(Math.random() * K.GRIPS.length)];
+    : K.GRIPS[Math.floor(drawGrip * K.GRIPS.length)];
   S.gripName = grip.name;
   S.grip = grip.g;
 
   S.rivalBase = S.forcedRivalMax !== null
     ? S.forcedRivalMax
-    : K.RIVAL_MIN_SPEED + Math.random() * (K.RIVAL_MAX_SPEED - K.RIVAL_MIN_SPEED);
+    : K.RIVAL_MIN_SPEED + drawRival * (K.RIVAL_MAX_SPEED - K.RIVAL_MIN_SPEED);
   S.rivalMax = S.rivalBase;
 
   S.steps = 0; S.elapsedMs = 0; S.newBest = false; S.bestSaved = true;
@@ -449,6 +513,8 @@ function recordBest(ms) {
 }
 
 S.bestMs = readBest();
+S.linkSeed = readLinkSeed();
+window.addEventListener("hashchange", () => { S.linkSeed = readLinkSeed(); });
 
 // ---------------------------------------------------------------- rendering
 // render() reads the state. render() never writes the state.
@@ -466,6 +532,8 @@ const el = {
   stopin:  document.getElementById("stopin"),
   callout: document.getElementById("callout"),
   reason:  document.getElementById("reason"),
+  mark:    document.getElementById("mark"),
+  raceid:  document.getElementById("raceid"),
   togo:    document.getElementById("togo"),
   scene:   document.getElementById("scene")
 };
@@ -491,6 +559,20 @@ function reasonText() {
   return "you were still moving at " + Math.round(S.endSpeed * 3.6) + " km/h";
 }
 
+// The gap from the nose to the car-stop board, shown only for a WIN.
+function markGapM() { return S.playerPos - S.markM; }
+
+function markText() {
+  if (S.state !== "RESULT" || S.result !== "WIN") return "";
+  const gap = Math.round(markGapM() * 10) / 10;
+  if (gap === 0) return "on the mark";
+  return Math.abs(gap).toFixed(1) + " m " + (gap < 0 ? "short of" : "past") + " the mark";
+}
+
+function raceIdText() {
+  return S.state === "RESULT" ? "race " + S.seed : "";
+}
+
 function setText(node, text) {
   if (node && node.textContent !== text) node.textContent = text;
 }
@@ -500,6 +582,8 @@ function render() {
   setText(el.best, S.bestMs === null ? "--" : secs(S.bestMs));
   setText(el.result, S.state === "RESULT" ? S.result : "");
   setText(el.reason, reasonText());
+  setText(el.mark, markText());
+  setText(el.raceid, raceIdText());
   setText(el.newbest, S.state === "RESULT" && S.newBest
     ? (S.bestSaved ? "NEW BEST" : "NEW BEST (NOT SAVED)")
     : "");
@@ -696,6 +780,22 @@ function drawRail(y, from, to, X) {
   }
 }
 
+// The car-stop board: where a driver aims the nose. A post and a square plate.
+function drawCarStopBoard(X, y, tall) {
+  const x = X(S.markM);
+  if (x < -20 || x > cssW + 20) return;
+  const top = y - tall * 1.9;
+  g.strokeStyle = pal.edge;
+  g.lineWidth = 2;
+  g.beginPath(); g.moveTo(x, y); g.lineTo(x, top); g.stroke();
+  const r = 6;
+  g.fillStyle = pal.warn;
+  g.fillRect(x - r, top - 2 * r, 2 * r, 2 * r);
+  g.strokeStyle = pal.edge;
+  g.lineWidth = 1;
+  g.strokeRect(x - r, top - 2 * r, 2 * r, 2 * r);
+}
+
 // The distant signal: a board that warns the driver the platform is coming.
 function drawWarningBoard(X, y, tall) {
   const x = X(S.warnAtM);
@@ -880,6 +980,7 @@ function drawScene() {
   drawStation(X, playerY, tall);
   drawWarningBoard(X, playerY, tall);
   drawSignal(X, playerY, tall);
+  drawCarStopBoard(X, playerY, tall);
   drawStopMarker(X, playerY, tall);
   drawTrain(S.rivalPos, rivalY, pal.muted, X, scale, tall);
   drawRivalEdge(X, rivalY, tall);
@@ -896,6 +997,7 @@ function uiStart() {
   S.forcedRivalMax = null;     // a human race always draws a fresh station,
   S.forcedPlatformStart = null; // a fresh rail, and a fresh rival
   S.forcedGrip = null;
+  S.forcedSeed = null;         // a link seed (S.linkSeed) still holds
   lastFrameMs = 0;
   accMs = 0;
   if (S.state === "RACING") resetRace(); else startRace();
@@ -1013,6 +1115,9 @@ window.__drivetrain = {
   get rivalBraking(){ return S.rivalBraking; },
   get elapsedMs()   { return S.elapsedMs; },
   get bestMs()      { return S.bestMs; },
+  get seed()        { return S.seed; },
+  get markM()       { return S.markM; },
+  get markGapM()    { return markGapM(); },
   get track() {
     return {
       length:        K.TRACK_LENGTH_M,
@@ -1028,6 +1133,7 @@ window.__drivetrain = {
       S.forcedRivalMax = (opts && typeof opts.rivalMax === "number") ? opts.rivalMax : null;
       S.forcedPlatformStart = (opts && typeof opts.platformStart === "number") ? opts.platformStart : null;
       S.forcedGrip = (opts && typeof opts.grip === "string") ? opts.grip : null;
+      S.forcedSeed = (opts && validSeed(opts.seed)) ? opts.seed : null;
       startRace();
     },
     setInput(next) { setInput(next); },
