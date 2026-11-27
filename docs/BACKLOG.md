@@ -1,124 +1,160 @@
 # Backlog
 
-Ideas for after the frozen contract. None of these items is in the current
-build. Each item needs a new brief before work starts.
+Ranked for one goal: more people find Last Stop, finish a race and come back.
+None of these items is built yet. Each needs a short brief before work starts.
 
-Reviewed against `index.html`, `factory/BRIEF.md` and `factory/DECISIONS.md`
-on 2026-11-25.
+Reviewed against the Last Stop build on `main` (`godot/`), its itch.io draft
+(`godot/release/itch-page.md`) and the live site on 2026-11-25.
 
 ## How to read this
 
-- **Funnel step.** The step the item moves: *reach* (new people open the link),
-  *first race* (a new player finishes and understands one race), *return*
-  (a player comes back another day).
+- **Funnel step.** Where a player is lost or won:
+  1. *find*: someone sees the game (a post, a store page, a friend's message);
+  2. *open*: they start it;
+  3. *first race*: they finish one race and understand why they won or lost;
+  4. *return*: they play again on another day;
+  5. *share*: they send it to someone, which feeds *find*.
 - **Score.** Impact, confidence and ease, each from 1 to 5, multiplied. A
-  higher score goes first. The scores are a judgement, not data (see Gaps).
-- **Pass test.** A result from real people, not from us, that shows the item
-  worked. An item that fails its test is removed, not tuned forever.
-- **Conflict.** A line in BRIEF §13 or §14 that the new brief must remove first.
+  higher score goes first. Every score is a judgement until M1 gives numbers.
+- **Pass test.** A result from players or a channel, not from us, that shows
+  the item worked. An item that fails its test is removed, not tuned forever.
 
-## What the code already gives
+## Where adoption stands
 
-These facts change the size of several items:
+- **Players measured: none.** The game sends no data (BRIEF §13), and it is
+  not yet on a store that counts for us. Every step of the funnel is unknown.
+- **The game is public** at `https://aj-72.github.io/drivetrain/` since
+  2026-11-25, and plays on an Android phone.
+- **The README still links to the old claude.ai artifact.** Anyone who finds
+  the repo is sent to the wrong game.
+- **The itch.io page text is written** (`godot/release/itch-page.md`), with an
+  upload checklist. Check whether it was ever uploaded.
+- **Download size.** The web build sends 9.8 MB compressed (43.7 MB raw, almost
+  all of it the Godot engine in `index.wasm`). Measured on 2026-11-25 with
+  `curl` against the live site. This decides which portals will take it.
 
-- Each race draws three values with `Math.random()`: the station start
-  (1300–1520 m), the rail grip (DRY, DAMP, WET) and the rival top speed
-  (28–33 m/s). The debug interface can already force all three
-  (`forcedPlatformStart`, `forcedGrip`, `forcedRivalMax`).
-- The simulation runs in fixed steps of 1/60 s. The same draws and the same
-  presses give the same race, step for step.
-- The controls are two held buttons, throttle and brake. There are no notches.
-- A `WIN` is any stop inside a 240 m platform. There is no stop mark, so the
-  game cannot measure how close a stop was.
-- Only a `WIN` records a best time (`drivetrain.bestMs` in localStorage).
+So the first job is not a feature. It is getting the game in front of a few
+hundred people in a place that counts them.
 
-## Foundations
+## What Last Stop already has
 
-These items are small and invisible on their own, but most features below
-depend on them. Build them first.
+The earlier backlog was written for the classic `index.html`. Last Stop
+already covers several of its items:
 
-| # | Item | What it unlocks | Size |
-|---|------|-----------------|------|
-| F1 | **Seeded race.** One number sets all three draws. The same seed gives the same station, rail and rival on every phone. | B1, B6, B9, B10, B5 | Small. Three `Math.random()` calls become one seeded generator. |
-| F2 | **Stop mark.** A car-stop board near the platform end. The result screen shows the gap to it in metres. A `WIN` stays any stop inside the platform. | B1, B4, B8, B5 | Small. The contract test must still pass. |
-| F3 | **Press log.** The game records the step number of each throttle and brake press and release. | B9, B5 | Small. A race has a few dozen events. |
-| S1 | **Share probe (spike).** Done on 2026-11-25. Results below. | Decides how B1, B6, B7 and B9 share. | Done. |
+| Earlier item | In Last Stop | Status here |
+|---|---|---|
+| F2 stop mark | A stop board at the platform centre, and a star for stopping near it. | Done. |
+| B3 several routes | An 8-station campaign, *The Coastline*, each with its own rail, platform and rival. | Done. |
+| B4 smooth stop | Brake notches 0–3 and wheel slide make the stop a skill already. | Cut. Revisit only if players ask. |
+| B8 perfect stop stamp | The board star exists. A full-screen stamp does not. | Folded into A1. |
+| B9 friend's ghost | A ghost of your own best run exists (`ghost.gd`), marked as a paid feature. Not shareable. | Becomes A5. |
+| F1 seeded race | Campaign stations are fixed, so a station link needs no seed. Free race is still random. | Needed only for A4. |
+
+What Last Stop does not have: any share or copy button, any link that opens a
+given station, and a free race for new players (it opens only after all 8
+stations are won).
+
+## Do first: measure
+
+Without these, nothing below can be ranked by real data.
+
+| # | Item | Funnel step | Score | Pass test |
+|---|------|-------------|-------|-----------|
+| M1 | **Put Last Stop on itch.io** using the page already written. itch.io counts impressions, page views, browser plays and referrers for each project, so it gives the first numbers with no code and no change to §13. Point the README's "Play it" link at the itch.io page or GitHub Pages. | Find, open | 5×5×5 = 125 | The itch.io analytics page shows views and browser plays within a week. |
+| M2 | **Watch 5 strangers play their first race.** No hints from us. Count wins in their first three races and note where each gets stuck. Phone first. | First race | 5×4×4 = 80 | A written count. If fewer than 3 of 5 win within three races, A2 moves above everything except M1. |
+| M3 | **Decide §13 for a count-only counter.** One request each for page open, race finished and share tapped: no IDs, no cookies, no personal data. It is the only way to see return visits outside itch.io. It is a decision, not a build. | All | 4×3×3 = 36 | A written yes or no in `factory/DECISIONS.md`. |
+
+## Channels
+
+Ranked by how cheap they are to try and how much they teach. Try one at a
+time, and wait for its numbers before the next.
+
+| Order | Channel | Why | What it needs | Pass bar | Check before posting |
+|---|---|---|---|---|---|
+| 1 | **itch.io** (M1) | Free, takes Godot web builds, has built-in analytics, and players there expect small indie games. | The written page, a 630×500 cover, 3–5 screenshots, a short GIF of a close finish. | Browser plays at least 25% of page views in the first month. Forum posts report about this ratio; it is a rough guide, not a standard. | Upload checklist in `itch-page.md`. |
+| 2 | **Reddit**: r/WebGames for players, r/godot for other developers, a train subreddit for the theme. | A good post can bring hundreds of plays in a day, and the comments are free playtesting. | A 10–15 s clip of a photo finish, one line of hook ("Arriving first does not win"), a link to the itch.io page. | A post that sends 100+ views to itch.io (its referrer list shows the source). | Each subreddit's sidebar rules. r/WebGames reportedly wants posters who have been members a while; this was not confirmed. |
+| 3 | **Short video** (YouTube Shorts, TikTok, Instagram Reels). | The game shows its hook in seconds: two trains, one stops on the line, the other overshoots. | The same 10–15 s clip in portrait, a caption, the link in the profile. | One clip passes 1,000 views and itch.io shows the referrer. | Nothing to submit; post from the user's own accounts. |
+| 4 | **Web game portals**: CrazyGames first, Poki later. | Portals bring the largest audiences for browser games, but each has a review and wants a game with proven numbers. | Portal SDK, cover video, metadata, a build within the size limit, gameplay that starts at once. | Accepted by the portal's review. | See the notes below. |
+| — | **App stores** (Google Play, App Store) | Not yet. Fees, store review and payments (`paid.gd` is not wired) cost more than they teach at zero players. | — | — | Revisit after M1 shows retention. |
+
+**Portal notes (checked 2026-11-25).**
+
+- *CrazyGames* lists Godot as supported. Its technical requirements cap the
+  initial download at 50 MB, and at 20 MB to appear on the mobile homepage.
+  The docs also say new players must land in gameplay immediately. Last Stop
+  opens on a title screen and a route map, so that may need a short-cut. Not
+  checked: whether the cap is counted compressed (9.8 MB here) or raw (43.7 MB).
+- *Poki* reviews each game by hand, runs a "Web Fit Test" after acceptance,
+  and prefers web exclusives. Being on itch.io and GitHub Pages may conflict
+  with that. A third-party guide (not Poki's own) names an 8 MB initial
+  download, which would need a smaller engine build (A7).
+- Not checked: YouTube Playables and Google GameSnacks. Both have their own
+  certification rules.
+
+## Features
+
+Grouped by idea. The build order by score is under the table.
+
+| # | Idea | Funnel step | Score (I×C×E) | Depends on | Pass test |
+|---|------|-------------|---------------|------------|-----------|
+| A1 | **Share the result.** The result screen gets SHARE and COPY. Share sends one line and a link, such as "Last Stop · ASHFORD HALT · WIN 41.2 s · 0.8 m from the board ★★★". Copy is the fallback when share is refused. A stop on the board shows a full-screen stamp worth screenshotting. Calls go through Godot's `JavaScriptBridge`. | Share | 5×4×4 = 80 | M1 for the link target | Shares or referrers from shared links show up in itch.io within two weeks. |
+| A2 | **Fix the first race** if M2 says so. Possible fixes: an easier first station, a one-line hint after a loss that names what went wrong ("braked 120 m late"), or a replay of the stop. Chosen from what M2 shows, not before. | First race | 5×3×4 = 60 | M2 | In a second group of 5, at least 4 win within three races. |
+| A3 | **Station challenge link.** A link such as `#ashford-t41200` opens straight into that station's race with "Beat 41.2 s". The friend skips the title and map, which also suits portals that want instant gameplay. Campaign stations are fixed, so no seed is needed. | Find, open | 5×3×4 = 60 | A1 | Of 10 people sent a link, at least 3 finish the race. |
+| A4 | **Daily race, open from day one.** One date-seeded race for everyone, with a share line. Today free race opens only after the whole campaign, so a new player has no reason to come back tomorrow. | Return | 4×3×3 = 36 | F1, A1 | At least 3 testers play on 3 days of one week without a reminder. |
+| A5 | **Send your ghost.** A challenge link that also carries your run, so the friend races your ghost. The ghost already exists. The link must hold the run in a short form; test a full-length link on a phone first. The ghost is a paid feature, so decide whether a received ghost is free. | Share, return | 4×3×2 = 24 | A3 | Players sent a ghost link play more races than players sent a plain link. |
+| A6 | **Clip and cover kit.** A repeatable way to record a 10–15 s photo finish in landscape and portrait, plus the itch.io cover. Channels 1–3 all need it. | Find | 4×4×4 = 64 | — | Used in every channel post. |
+| A7 | **Smaller web build.** Trim the Godot engine (disable unused modules, size-optimised export templates) to get the download under Poki's reported limit. Only worth it if a portal asks. | Open | 3×3×2 = 18 | Channel 4 | The compressed download falls below the portal's limit. |
+| A8 | **Pass the phone.** Two to four names take turns at one station. A table at the end ranks wins first, then the gap to the board. | Share | 3×3×4 = 36 | — | One group plays 3 or more rounds in a row. |
+| A9 | **Gradients and speed boards** for new stations. | Return | 3×3×3 = 27 | — | Players lose more races to judgement than to the rival. |
+| A10 | **Leaderboard** for the daily race, on a server. Needs M3 and a host, and checks each entry by replaying its presses. | Return | 4×2×2 = 16 | A4, M3 | Entries come from people the user does not know. |
+
+Ranked by score, the build order is M1, M2, A1, A6, A2, A3, M3, A4, A8, A9,
+A5, A7, A10. A6 sits beside M1 because the itch.io page needs its cover and
+GIF.
 
 ## Probe results (S1)
 
-The game is served from GitHub Pages: Last Stop at
-`https://aj-72.github.io/drivetrain/`, the classic game at `/classic/`. The
-probe page is `probe/index.html`, published at `/probe/`. It was opened on an
+The game page at `https://aj-72.github.io/drivetrain/probe/` was opened on an
 Android phone, in a browser tab, on 2026-11-25.
 
 | Check | Result | What it means |
 |-------|--------|---------------|
-| Page context | Top level, secure (HTTPS), not in a frame. | The limits of a claude.ai artifact frame do not apply. |
-| `navigator.share` with text, from a tap | The share sheet opened. | A Share button works for the daily line (B1). |
-| `navigator.share` with a link, from a tap | The share sheet opened. | A Share button works for the challenge link (B6). |
-| `navigator.clipboard.writeText`, from a tap | Copied. | A Copy button works too. |
-| `#seed=20261125&t=41200` | Arrives intact. | `=` and `&` are safe in a game link. |
-| `localStorage` | Works. | Best times and streaks can stay on the phone. |
-| `permissionsPolicy.allowsFeature('web-share')` | `false`, but sharing worked. | This check is wrong on this browser. Test sharing with a real call, not the policy API. |
+| Page context | Top level, HTTPS, not in a frame. | Artifact-frame limits do not apply. |
+| `navigator.share`, text and link, from a tap | The share sheet opened. | A1 can use a real Share button. |
+| `navigator.clipboard.writeText`, from a tap | Copied. | COPY works as the fallback. |
+| `#seed=20261125&t=41200` | Arrived intact. | `=` and `&` are safe in a link. |
+| `localStorage` | Works. | Streaks and bests stay on the phone. |
+| `permissionsPolicy.allowsFeature('web-share')` | `false`, but sharing worked. | Test sharing with a real call, not this API. |
 
-Not checked: a 200-character link, iPhone Safari, the installed (home screen)
-app, and desktop browsers. Last Stop is a Godot build, so its share and copy
-buttons go through `JavaScriptBridge`; check them in the real export, not only
-in the probe.
+Not checked: iPhone Safari, a 200-character link, the installed app, desktop
+browsers, itch.io's embed frame (A1 and A3 must work there too), and share from
+inside the Godot export through `JavaScriptBridge`.
 
-**Earlier run, wrong host.** A first probe ran inside a claude.ai artifact frame
-(desktop and Android). There, `navigator.share` was missing or refused,
-fragments over 128 characters or with `=`/`&` arrived empty, and copy failed on
-desktop. Those limits belong to the artifact frame, not to the game.
+An earlier run inside a claude.ai artifact frame found share and long links
+blocked. Those limits belong to that frame, not to the game.
 
-## Features, in priority order
+## Rules to update
 
-| # | Idea | Funnel step | Score (I×C×E) | Depends on | Pass test | Conflict |
-|---|------|-------------|---------------|------------|-----------|----------|
-| B6 | **Challenge link.** The result screen shows a link with the seed and the time in a plain fragment, such as `#c-k3x9-t41200`: "Beat my 41.2 s, WET rail." The friend races the same rival on the same rail. The link shows as selectable text with a copy button, because copy can fail. | Reach | 5×4×5 = 100 | F1 | Of 10 people sent a link, at least 3 finish a race. | None. The link holds no personal data. |
-| B1 | **Daily challenge.** Today's date is the seed, so everyone gets the same race. The share text is one line, shown as selectable text with a copy button: "Drivetrain 25 Nov · WIN 41.2 s · 0.8 m from the mark · DAMP". | Return, reach | 5×3×5 = 75 | F1, F2 | At least 3 testers play on 3 days of one week without a reminder. | None. |
-| B7 | **Screenshot-ready result.** The result screen is built to be shared as a picture: the player can take a screenshot, and a Share button can send the image where the browser allows it. It shows the date, the train, the mark, the gap in metres and the time in one phone-sized frame. The player shares it with the phone's own screenshot. | Reach | 4×3×5 = 60 | F2 | Testers post a screenshot of the result without being asked. | None. |
-| B8 | **Perfect stop stamp.** A stop within 0.5 m of the mark shows a rare full-screen stamp. The daily share line gets a mark for it. | Reach | 3×3×5 = 45 | F2 | Players screenshot or share a stamp without being asked. | None. |
-| B4 | **Smooth stop score.** A second score for a stop with few brake presses and releases in the last 400 m. One long, well-judged brake beats many short taps. | Return | 3×3×4 = 36 | F2, F3 | Good players say they now try for both scores. | None. Reworded: the game has no notches. |
-| B10 | **Pass the phone.** Two to four names take turns on one seed. A table at the end ranks wins first, then the gap to the mark. | Reach | 3×3×4 = 36 | F1, F2 | One group plays 3 or more rounds in a row. | Probably none. §14 rules out a second device, and this mode uses one. |
-| B2a | **Gradients and speed boards.** A slope changes the pull and the braking. A board sets a limit, with a time penalty for overspeed. | Return | 3×3×3 = 27 | None | Players lose more races to judgement than to the rival. | D11 removed the player's top speed on purpose. Speed boards need a new decision entry. |
-| B9 | **Friend's ghost.** The challenge link also holds the friend's press log. Their train runs as a faint ghost beside yours. The probe confirmed links up to 21 characters with `=` and `&`; longer links were not tested. Test a full-length ghost link before the brief. | Reach, return | 4×3×2 = 24 | B6, F3 | Players who get a ghost link play more races than players who get a plain link. | None. Only presses go into the link. |
-| B3 | **Several routes.** Each route is a data record: length, station range, gradients, speed boards, a name. The player picks a route before the race. The challenge link and the daily seed name the route. | Return | 3×3×2 = 18 | B2a, F1 | Players play more than one route in a week. | "A level editor or several tracks." |
-| B2b | **A caution signal.** A signal that changes to caution during the race. | Return | 3×3×2 = 18 | B2a | Same as B2a. | "Junctions, signals, points, or route choice." |
-| B5 | **Leaderboard.** One board for each daily seed, kept on a server. GitHub Pages serves static files only, so the board needs a host of its own. Each entry stores the seed and the press log. A viewer's page replays a run before showing it, so a faked time fails. | Return | 4×2×2 = 16 | F1, F2, F3, B1 | Entries come from people the user does not know. | "Accounts, login, or a server." Also §13: "The game makes no network call." |
-| R2 | **Route choice in the race.** A junction where the player picks the left or the right track. | Return | 2×2×1 = 4 | B3 | None set. It changes the core skill, from stopping to choosing. | "Junctions, signals, points, or route choice." |
-
-## Changes from the earlier list
-
-- B1 and B6 share one foundation (F1). B1 is a challenge link whose seed is the
-  date.
-- B1, B8 and B5 needed a stop mark that the game does not have. F2 adds it.
-- B4 asked for "few notch changes". The game has two held buttons and no
-  notches, so B4 now counts brake presses.
-- B2 is split. The signal part conflicts with §14 and the gradient part does
-  not.
-- B3 now covers several routes and the route data format. Choosing a route
-  during the race is a separate item, R2, ranked last.
-- The first probe ran in a claude.ai artifact frame and ruled out the share
-  sheet and long links. The game is on GitHub Pages, where a second probe
-  showed both share and copy work. B7 and B9 keep their ranks for now; re-rank
-  them with the next brief.
-- B5 assumed an Artifact's shared database. The game is on GitHub Pages,
-  which has none, so B5 needs a server again. It still breaks §13.
+- **BRIEF §13 and §14 were written for the classic game.** Last Stop already
+  has sound, music, progression and eight stations, which §14 lists as out of
+  scope. Write a short Last Stop section, or a decision entry, before the next
+  brief, so the next brief is checked against rules that match the game.
+- `factory/log.md` line 484: a loss must never count as a record. Every share
+  line and ranking above shows wins first.
 
 ## Gaps
 
-- **No numbers.** The game makes no network call, so nobody can see how many
-  people open the link, finish a race or come back. Every score above is a
-  judgement. Until §13 changes, each pass test is counted by hand with a few
-  testers. If §13 changes for B5, a counter for opens, races and shares should
-  ship in the same change.
-- **The first race is unmeasured.** No item covers a new player's first race.
-  If most new players lose their first race to the rival, sharing only sends
-  people to a loss. Check this before B6: watch 5 new players and count the
-  wins in their first three races.
-- **The link is open.** The game is public on GitHub Pages
-  (`https://aj-72.github.io/drivetrain/`) since 2026-11-25. The README still
-  links to the old artifact; point it at Pages before any reach item ships.
-- `factory/log.md` line 484: a loss must never count as a record. Every ranking
-  above (B1, B5, B10) ranks wins first.
+- **No numbers yet.** Until M1, every score is a guess.
+- **Not checked:** CrazyGames' compressed-versus-raw size rule, Poki's own size
+  limit, each subreddit's current rules, YouTube Playables and GameSnacks.
+
+## Sources (checked 2026-11-25)
+
+- CrazyGames technical requirements: https://docs.crazygames.com/requirements/technical/
+- CrazyGames gameplay requirements: https://docs.crazygames.com/requirements/gameplay/
+- Poki requirements: https://sdk.poki.com/requirements
+- Poki Web Fit Test: https://sdk.poki.com/web-fit-test
+- itch.io analytics update (impressions and CTR): https://itch.io/updates/updates-to-project-analytics-filtering-collections-impressions-and-more
+- itch.io forum, view-to-play ratios: https://itch.io/t/2033799/can-you-share-your-stats-and-analytics-here
+- Third-party Poki guide (8 MB figure, unofficial): https://app.cinevva.com/guides/publish-game-poki
+- Third-party note on r/WebGames membership (unconfirmed): https://dinogame.gg/blog/best-browser-game-subreddits/
