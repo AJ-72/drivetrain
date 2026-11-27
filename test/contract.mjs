@@ -6,16 +6,19 @@
 // Exit: 0 only when all 24 checks pass.
 
 import { createRequire } from "module";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import path from "path";
 import fs from "fs";
 
-const require = createRequire("/opt/node22/lib/node_modules/");
+// Playwright resolves from this project (npm install), or from the
+// global node22 install the cloud runner uses.
+const require = createRequire(fs.existsSync("/opt/node22/lib/node_modules/playwright")
+  ? "/opt/node22/lib/node_modules/" : import.meta.url);
 const { chromium } = require("playwright");
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const INDEX = path.join(ROOT, "index.html");
-const URL = "file://" + INDEX;
+const URL = pathToFileURL(INDEX).href;
 
 const RESULTS = ["WIN", "UNDERSHOT", "OVERSHOT", "RIVAL WINS"];
 // The station, the rail, and the rival all vary per race, so every
